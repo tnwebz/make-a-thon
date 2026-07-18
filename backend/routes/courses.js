@@ -393,4 +393,88 @@ router.delete('/batches/:batch_id', authMiddleware, async (req, res) => {
     }
 });
 
+router.get('/:course_id/analytics', authMiddleware, async (req, res) => {
+    try {
+        const course_id = req.params.course_id;
+        
+        const course = await Course.findOne({ 
+            where: { id: course_id, instructor_id: req.user.id },
+            include: [{ model: Module, include: [{ model: ContentItem, as: 'items' }] }]
+        });
+        if (!course) return res.status(404).json({ detail: 'Course not found' });
+
+        const enrollments = await Enrollment.findAll({ where: { course_id } });
+        const totalEnrollments = enrollments.length;
+
+        let totalItems = 0;
+        const itemIds = [];
+        if (course.Modules) {
+            course.Modules.forEach(m => {
+                if (m.items) {
+                    m.items.forEach(i => {
+                        totalItems++;
+                        itemIds.push(i.id);
+                    });
+                }
+            });
+        }
+
+        const studentIds = enrollments.map(e => e.user_id);
+        const progressRecords = await LessonProgress.findAll({ 
+            where: { user_id: studentIds, content_item_id: itemIds } 
+        });
+
+        const progressByUser = {};
+        studentIds.forEach(id => progressByUser[id] = 0);
+        progressRecords.forEach(p => {
+            if (progressByUser[p.user_id] !== undefined) {
+                progressByUser[p.user_id]++;
+            }
+        });
+
+        const funnel = { complete: 0, active: 0, started: 0, inactive: 0 };
+        let activeLearners = 0;
+
+        for (const uid of studentIds) {
+            const completed = progressByUser[uid] || 0;
+            if (completed > 0) activeLearners++;
+            
+            if (totalItems === 0) {
+                funnel.inactive++;
+                continue;
+            }
+
+            const pct = (completed / totalItems) * 100;
+            if (pct === 100) funnel.complete++;
+            else if (pct >= 50) funnel.active++;
+            else if (pct > 0) funnel.started++;
+            else funnel.inactive++;
+        }
+
+        const dailyEngagement = [0, 0, 0, 0, 0, 0, 0];
+        const now = new Date();
+        now.setHours(0, 0, 0, 0); // start of today
+        
+        progressRecords.forEach(p => {
+            const date = new Date(p.completed_at);
+            date.setHours(0, 0, 0, 0);
+            const daysAgo = Math.round((now - date) / (1000 * 60 * 60 * 24));
+            if (daysAgo >= 0 && daysAgo < 7) {
+                dailyEngagement[6 - daysAgo]++;
+            }
+        });
+
+        res.json({
+            totalEnrollments,
+            activeLearners,
+            totalItems,
+            funnel,
+            dailyEngagement
+        });
+    } catch (error) {
+        console.error("Course Analytics Error:", error);
+        res.status(500).json({ detail: 'Internal Server Error' });
+    }
+});
+
 module.exports = router;

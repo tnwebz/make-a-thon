@@ -302,11 +302,7 @@ const StudentManagement = () => {
                                         ) : s.enrolled_courses.map((course, idx) => (
                                           <div key={idx} className="flex items-center justify-between bg-white border-2 border-gray-200 p-4 rounded-xl shadow-md">
                                             <span className="font-extrabold text-black text-[15px]">{course.title}</span>
-                                            {course.tier === "Paid" ? (
-                                              <span className="flex items-center gap-2 bg-green-50 text-green-800 px-3 py-1.5 rounded-md text-[11px] font-black uppercase tracking-widest border border-green-200"><CheckCircle size={14} /> Paid</span>
-                                            ) : (
-                                              <span className="flex items-center gap-2 bg-gray-100 text-gray-800 px-3 py-1.5 rounded-md text-[11px] font-black uppercase tracking-widest border border-gray-300"><Calendar size={14} /> {course.days_left !== undefined && course.days_left !== null ? course.days_left : "Unlimited"} Days Left</span>
-                                            )}
+                                            <span className="flex items-center gap-2 bg-gray-100 text-gray-800 px-3 py-1.5 rounded-md text-[11px] font-black uppercase tracking-widest border border-gray-300"><CheckCircle size={14} /> Enrolled</span>
                                           </div>
                                         ))}
                                       </div>

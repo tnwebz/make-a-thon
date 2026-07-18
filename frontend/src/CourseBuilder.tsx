@@ -6,7 +6,7 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import {
   ArrowLeft, Video, HelpCircle, FileText, Star,
   Trash2, Edit3, Layout, ChevronDown, Plus, Code, Radio, Zap,
-  X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, Image as ImageIcon
+  X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, BookOpen, Image as ImageIcon
 } from "lucide-react";
 import { GlassToast } from "./components/GlassToast";
 import BatchManagementTab from "./BatchManagementTab";
@@ -59,6 +59,10 @@ const CourseBuilder = () => {
   const [newBatchName, setNewBatchName] = useState("");
   const [newBatchSection, setNewBatchSection] = useState("");
 
+  // Analytics State
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
   // Settings & Pricing State
   const [priceType, setPriceType] = useState("Free");
   const [priceAmount, setPriceAmount] = useState("0");
@@ -96,6 +100,24 @@ const CourseBuilder = () => {
     fetchCourseData();
     fetchPublishedState();
   }, [courseId]);
+
+  useEffect(() => {
+    if (activeTab === "Analytics" && !analyticsData && !loadingAnalytics) {
+      const fetchAnalytics = async () => {
+        setLoadingAnalytics(true);
+        try {
+          const token = localStorage.getItem("token");
+          const res = await axios.get(`http://127.0.0.1:8000/api/v1/courses/${courseId}/analytics`, { headers: { Authorization: `Bearer ${token}` } });
+          setAnalyticsData(res.data);
+        } catch (e) {
+          console.error("Failed to fetch analytics:", e);
+        } finally {
+          setLoadingAnalytics(false);
+        }
+      };
+      fetchAnalytics();
+    }
+  }, [activeTab, courseId, analyticsData, loadingAnalytics]);
 
   const fetchPublishedState = async () => {
     try {
@@ -666,88 +688,105 @@ const CourseBuilder = () => {
               <div className="flex items-end justify-between mb-8">
                 <div>
                   <h2 className="text-4xl font-black tracking-tight mb-2">Platform Analytics</h2>
-                  <p className="text-slate-500 text-lg">Track engagement, completions, and real-time revenue pipeline.</p>
+                  <p className="text-slate-500 text-lg">Track engagement, completions, and digital literacy progression.</p>
                 </div>
                 <div className="px-4 py-2 bg-emerald-50 rounded-xl text-emerald-600 font-bold border border-emerald-100 flex items-center gap-2">
-                  <TrendingUp size={18} /> +14% This Month
+                  <TrendingUp size={18} /> Real-time Data
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4"><Users size={24} /></div>
-                  <div>
-                    <div className="text-3xl font-black text-slate-900">{totalEnrollments.toLocaleString()}</div>
-                    <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Total Enrollments</div>
-                  </div>
+              {loadingAnalytics || !analyticsData ? (
+                <div className="h-64 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-slate-900"></div>
                 </div>
-
-                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between relative overflow-hidden group">
-                  <div className="absolute -right-6 -top-6 bg-emerald-500/10 w-32 h-32 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
-                  <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center mb-4 relative z-10"><Zap size={24} /></div>
-                  <div className="relative z-10">
-                    <div className="text-3xl font-black text-slate-900">₹ {rawRevenue.toLocaleString()}</div>
-                    <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Gross Revenue</div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between">
-                  <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-4"><Award size={24} /></div>
-                  <div>
-                    <div className="text-3xl font-black text-slate-900">482</div>
-                    <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Certificates Issued</div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between">
-                  <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center mb-4"><Clock size={24} /></div>
-                  <div>
-                    <div className="text-3xl font-black text-slate-900">4.2 hrs</div>
-                    <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Avg. Completion Time</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* REVENUE PIPELINE GRAPH (MOCK) */}
-              {priceType === "Paid" && (
-                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8">
-                  <h4 className="font-extrabold text-slate-900 text-xl mb-6">Revenue Pipeline</h4>
-                  <div className="h-48 flex items-end gap-3 w-full border-b border-slate-100 pb-2">
-                    {[30, 45, 25, 60, 80, 50, 95].map((h, i) => (
-                      <div key={i} className="flex-1 bg-emerald-100 hover:bg-emerald-400 transition-colors rounded-t-lg relative group" style={{ height: `${h}%` }}>
-                        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs font-bold py-1 px-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                          ₹ {(h * rawRevenue / 400).toFixed(0)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest mt-4">
-                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                <h4 className="font-extrabold text-slate-900 text-xl mb-6">Student Enrollment Funnel</h4>
-                <div className="space-y-6">
-                  {[
-                    { label: "Completed Final Exam (100%)", pct: 38, count: 474, color: "bg-emerald-500" },
-                    { label: "Active & Engaging (50-99%)", pct: 45, count: 561, color: "bg-blue-500" },
-                    { label: "Started First Module (1-49%)", pct: 15, count: 187, color: "bg-amber-400" },
-                    { label: "Bounced / Inactive (0%)", pct: 2, count: 26, color: "bg-slate-300" },
-                  ].map((stat, i) => (
-                    <div key={i}>
-                      <div className="flex justify-between text-sm font-bold text-slate-700 mb-2">
-                        <span>{stat.label}</span>
-                        <span className="text-slate-400">{stat.pct}% · {stat.count} users</span>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
-                        <motion.div initial={{ width: 0 }} animate={{ width: `${stat.pct}%` }} transition={{ duration: 1, delay: i * 0.1 }} className={`h-full ${stat.color} rounded-full`}></motion.div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between">
+                      <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center mb-4"><Users size={24} /></div>
+                      <div>
+                        <div className="text-3xl font-black text-slate-900">{analyticsData.totalEnrollments.toLocaleString()}</div>
+                        <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Total Enrollments</div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between relative overflow-hidden group">
+                      <div className="absolute -right-6 -top-6 bg-emerald-500/10 w-32 h-32 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all"></div>
+                      <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center mb-4 relative z-10"><Zap size={24} /></div>
+                      <div className="relative z-10">
+                        <div className="text-3xl font-black text-slate-900">{analyticsData.activeLearners}</div>
+                        <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Active Learners</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between">
+                      <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mb-4"><Award size={24} /></div>
+                      <div>
+                        <div className="text-3xl font-black text-slate-900">{analyticsData.funnel.complete}</div>
+                        <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Course Completions</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between">
+                      <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-xl flex items-center justify-center mb-4"><BookOpen size={24} /></div>
+                      <div>
+                        <div className="text-3xl font-black text-slate-900">{analyticsData.totalItems}</div>
+                        <div className="text-slate-500 font-bold text-sm tracking-wide mt-1 uppercase">Course Items</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8">
+                    <h4 className="font-extrabold text-slate-900 text-xl mb-6">Daily Learning Engagement (Last 7 Days)</h4>
+                    <div className="h-48 flex items-end gap-3 w-full border-b border-slate-100 pb-2">
+                      {analyticsData.dailyEngagement.map((count: number, i: number) => {
+                        const maxCount = Math.max(...analyticsData.dailyEngagement, 10);
+                        const h = (count / maxCount) * 100;
+                        return (
+                          <div key={i} className="flex-1 bg-emerald-100 hover:bg-emerald-400 transition-colors rounded-t-lg relative group" style={{ height: `${Math.max(h, 2)}%` }}>
+                            <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs font-bold py-1 px-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                              {count} lessons
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-widest mt-4">
+                      {Array.from({length: 7}).map((_, i) => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - (6 - i));
+                        return <span key={i}>{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>;
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                    <h4 className="font-extrabold text-slate-900 text-xl mb-6">Student Enrollment Funnel</h4>
+                    <div className="space-y-6">
+                      {[
+                        { label: "Completed Final Exam (100%)", count: analyticsData.funnel.complete, color: "bg-emerald-500" },
+                        { label: "Active & Engaging (50-99%)", count: analyticsData.funnel.active, color: "bg-blue-500" },
+                        { label: "Started First Module (1-49%)", count: analyticsData.funnel.started, color: "bg-amber-400" },
+                        { label: "Bounced / Inactive (0%)", count: analyticsData.funnel.inactive, color: "bg-slate-300" },
+                      ].map((stat, i) => {
+                        const total = analyticsData.totalEnrollments || 1; // avoid divide by zero
+                        const pct = Math.round((stat.count / total) * 100);
+                        return (
+                          <div key={i}>
+                            <div className="flex justify-between text-sm font-bold text-slate-700 mb-2">
+                              <span>{stat.label}</span>
+                              <span className="text-slate-400">{pct}% · {stat.count} users</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden">
+                              <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1, delay: i * 0.1 }} className={`h-full ${stat.color} rounded-full`}></motion.div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
           ) : activeTab === "Communications" ? (
@@ -936,16 +975,26 @@ const CourseBuilder = () => {
 
                 {activeModal !== "Code Test" && (
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">External Link / URL</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                        {/* <LinkIcon size={18} /> */} {/* LinkIcon was removed from imports, so commenting out or replacing */}
+                    <label className="block text-sm font-bold text-slate-700 mb-2">External Link / URL or File Upload</label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                          {/* <LinkIcon size={18} /> */}
+                        </div>
+                        <input
+                          value={itemUrl} onChange={(e) => setItemUrl(e.target.value)}
+                          placeholder="https://... or choose file"
+                          className="w-full text-lg p-4 pl-12 rounded-xl border-2 border-slate-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium transition-all"
+                        />
                       </div>
-                      <input
-                        value={itemUrl} onChange={(e) => setItemUrl(e.target.value)}
-                        placeholder="https://..."
-                        className="w-full text-lg p-4 pl-12 rounded-xl border-2 border-slate-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium transition-all"
-                      />
+                      <input type="file" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => setItemUrl(reader.result as string);
+                          reader.readAsDataURL(file);
+                        }
+                      }} className="w-1/3 text-xs text-slate-500 file:mr-4 file:py-3 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
                     </div>
                   </div>
                 )}

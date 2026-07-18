@@ -36,14 +36,17 @@ const StudentDashboard = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [activityTab, setActivityTab] = useState("assignments");
 
-  const userData = { name: "Student", email: "student@skillforge.com", initials: "ST" };
+  const [userProfile, setUserProfile] = useState<any>({ name: "Student", email: "", initials: "ST", profile_pic: "" });
 
   // Modal & Settings
   const [showModal, setShowModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [classesList, setClassesList] = useState<any[]>([]);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
 
   // --- REVIEW SYSTEM STATES ---
@@ -104,9 +107,21 @@ const StudentDashboard = () => {
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
+      const profileRes = await axios.get(`${API_BASE_URL}/profile`, config);
+      setUserProfile({
+        ...profileRes.data,
+        name: profileRes.data.full_name,
+        initials: profileRes.data.full_name.substring(0, 2).toUpperCase()
+      });
+
       const allRes = await axios.get(`${API_BASE_URL}/courses`, config);
       const myRes = await axios.get(`${API_BASE_URL}/my-courses`, config);
       const dashRes = await axios.get(`${API_BASE_URL}/student/dashboard`, config);
+      
+      try {
+        const classesRes = await axios.get(`${API_BASE_URL}/profile/classes`);
+        setClassesList(classesRes.data);
+      } catch (e) { console.error("Error fetching classes"); }
 
       const myCourseIds = new Set(myRes.data.map((c: Course) => c.id));
       setAvailableCourses(allRes.data.filter((c: Course) => !myCourseIds.has(c.id)));
@@ -381,8 +396,8 @@ const StudentDashboard = () => {
   const handleStartTest = async () => {
     const token = localStorage.getItem("token");
     try {
-      const formData = new FormData(); formData.append("pass_key", passKeyInput);
-      const res = await axios.post(`${API_BASE_URL}/code-tests/${showPassKeyModal}/start`, formData, { headers: { Authorization: `Bearer ${token}` } });
+      const payload = { pass_key: passKeyInput };
+      const res = await axios.post(`${API_BASE_URL}/code-tests/${showPassKeyModal}/start`, payload, { headers: { Authorization: `Bearer ${token}` } });
       const prevWarns = localStorage.getItem(`warns_${res.data.id}`);
       if (prevWarns && parseInt(prevWarns) > 2) { triggerToast("⛔ You have been disqualified from this test.", "error"); return; }
       setActiveTest(res.data);
@@ -664,16 +679,20 @@ const StudentDashboard = () => {
 
           <div className="relative">
             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-3 pl-2 pr-4 py-1.5 bg-white border border-gray-200 rounded-full hover:shadow-md transition-all">
-              <div className="w-8 h-8 rounded-full bg-gray-100 text-black flex items-center justify-center font-bold text-xs">{userData.initials}</div>
-              <span className="text-sm font-bold hidden md:block">{userData.name}</span>
+              {userProfile.profile_pic ? (
+                <img src={userProfile.profile_pic} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-gray-200" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-100 text-black flex items-center justify-center font-bold text-xs">{userProfile.initials}</div>
+              )}
+              <span className="text-sm font-bold hidden md:block">{userProfile.name}</span>
             </button>
 
             <AnimatePresence>
               {showProfileMenu && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 top-14 w-64 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 z-50">
                   <div className="mb-4 border-b border-gray-100 pb-4 px-2">
-                    <p className="font-black text-black">{userData.name}</p>
-                    <p className="text-xs text-gray-500 font-medium truncate">{userData.email}</p>
+                    <p className="font-black text-black">{userProfile.name}</p>
+                    <p className="text-xs text-gray-500 font-medium truncate">{userProfile.email}</p>
                   </div>
                   <button onClick={() => { setActiveTab("settings"); setShowProfileMenu(false); }} className="flex items-center gap-3 w-full p-3 rounded-xl text-gray-600 hover:bg-gray-50 hover:text-black font-bold text-sm transition-colors mb-1"><Settings size={18} /> Account Settings</button>
                   <button onClick={handleLogout} className="flex items-center gap-3 w-full p-3 rounded-xl text-red-500 hover:bg-red-50 font-bold text-sm transition-colors"><LogOut size={18} /> Sign Out</button>
@@ -692,7 +711,7 @@ const StudentDashboard = () => {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="flex flex-col gap-6">
 
             <div className="mb-4">
-              <h1 className="text-3xl md:text-4xl font-black tracking-tight text-black">Forge Your Future, {userData.name}!</h1>
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight text-black">Forge Your Future, {userProfile.name}!</h1>
               <p className="text-gray-500 font-medium mt-2">Welcome back to your learning hub.</p>
             </div>
 
@@ -1106,55 +1125,190 @@ const StudentDashboard = () => {
         {/* TAB: EXPLORE COURSES */}
         {activeTab === "explore" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-20">
-            <h2 className="text-3xl font-black mb-8">Explore Catalog</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {availableCourses.map(c => (
-                <div key={c.id} className="bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-6 shadow-lg hover:shadow-xl transition-shadow flex flex-col h-full">
-                  <div className="h-40 bg-gray-100 rounded-xl mb-6 overflow-hidden border border-gray-200 flex items-center justify-center text-gray-300">
-                    {c.image_url ? <img src={c.image_url} alt={c.title} className="w-full h-full object-cover" /> : <BookOpen size={40} />}
+            <h2 className="text-3xl font-black mb-2">Explore Catalog</h2>
+            <p className="text-gray-500 font-medium mb-8">Browse courses available for your class.</p>
+            
+            {availableCourses.length === 0 ? (
+              <div className="w-full bg-white rounded-3xl p-12 text-center border border-gray-100 shadow-sm flex flex-col items-center justify-center">
+                <Compass size={64} className="text-gray-200 mb-4" />
+                <h3 className="text-xl font-black text-gray-800 mb-2">No Courses Available</h3>
+                <p className="text-gray-500 font-medium max-w-sm">
+                  There are currently no new published courses available for your class. Check back later or ask your instructor!
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {availableCourses.map(c => (
+                  <div key={c.id} className="bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-6 shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 flex flex-col h-full">
+                    <div className="h-40 bg-gray-100 rounded-xl mb-6 overflow-hidden border border-gray-200 flex items-center justify-center text-gray-300">
+                      {c.image_url ? <img src={c.image_url} alt={c.title} className="w-full h-full object-cover" /> : <BookOpen size={40} />}
+                    </div>
+                    <h3 className="text-xl font-black mb-2 leading-tight">{c.title}</h3>
+                    <p className="text-xs text-gray-500 font-medium line-clamp-2 mb-6 flex-1">{c.description || "Learn new skills and upgrade your knowledge."}</p>
+                    <div className="flex justify-between items-center mt-auto pt-4 border-t border-gray-100">
+                      <span className="text-xs font-black text-blue-500 uppercase bg-blue-50 px-2 py-1 rounded-md">Class Assigned</span>
+                      <button onClick={() => openEnrollModal(c)} className="bg-black text-white font-bold py-2.5 px-5 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors shadow-md active:scale-95 text-xs uppercase tracking-wider">
+                        <ShoppingBag size={14} /> Request Enroll
+                      </button>
+                    </div>
                   </div>
-                  <h3 className="text-xl font-black mb-2 leading-tight">{c.title}</h3>
-                  <div className="flex justify-between items-center mt-auto pt-4">
-                    <span className="text-sm font-black text-gray-500 uppercase">Available</span>
-                    <button onClick={() => openEnrollModal(c)} className="bg-black text-white font-bold py-2 px-5 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors">
-                      <ShoppingBag size={16} /> Enroll
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
 
         {/* TAB: SETTINGS */}
         {activeTab === "settings" && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto pb-20">
-            <div className="bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-10 shadow-lg">
-              <h2 className="text-2xl font-black mb-2">Account Settings</h2>
-              <p className="text-gray-500 font-medium mb-8">Manage your security and preferences.</p>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto pb-20">
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-200 overflow-hidden">
+              
+              {/* Header */}
+              <div className="px-8 py-8 border-b border-gray-100 bg-gray-50/50">
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Account Settings</h2>
+                <p className="text-slate-500 font-medium mt-1">Manage your public profile and security preferences.</p>
+              </div>
 
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  setSavingSettings(true);
-                  const token = localStorage.getItem("token");
-                  await axios.post(`${API_BASE_URL}/user/change-password`, { new_password: newPassword }, { headers: { Authorization: `Bearer ${token}` } });
-                  triggerToast("Password Updated Successfully!", "success");
-                  setNewPassword("");
-                } catch (err) {
-                  triggerToast("Failed to update password.", "error");
-                } finally {
-                  setSavingSettings(false);
-                }
-              }}>
-                <div className="mb-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">New Password</label>
-                  <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all" />
-                </div>
-                <button type="submit" disabled={savingSettings} className="w-full py-4 bg-black text-white rounded-xl font-bold shadow-lg hover:bg-gray-800 disabled:opacity-70 transition-colors">
-                  {savingSettings ? "Updating..." : "Update Password"}
-                </button>
-              </form>
+              <div className="p-8 md:p-10">
+                
+                {/* --- PROFILE SECTION --- */}
+                <section className="mb-12">
+                  <div className="mb-8">
+                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
+                      <User size={18} className="text-blue-500" /> Public Profile
+                    </h3>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      setSavingProfile(true);
+                      const token = localStorage.getItem("token");
+                      const res = await axios.put(`${API_BASE_URL}/profile`, {
+                        full_name: userProfile.name,
+                        profile_pic: userProfile.profile_pic,
+                        school_class_id: userProfile.school_class_id,
+                        section: userProfile.section
+                      }, { headers: { Authorization: `Bearer ${token}` } });
+                      setUserProfile({
+                        ...res.data,
+                        name: res.data.full_name,
+                        initials: res.data.full_name.substring(0, 2).toUpperCase()
+                      });
+                      triggerToast("Profile Updated Successfully!", "success");
+                    } catch (err) {
+                      triggerToast("Failed to update profile.", "error");
+                    } finally {
+                      setSavingProfile(false);
+                    }
+                  }}>
+                    
+                    {/* Avatar Upload */}
+                    <div className="flex items-center gap-6 mb-8 p-6 bg-slate-50/50 rounded-2xl border border-slate-100">
+                      {userProfile.profile_pic ? (
+                        <img src={userProfile.profile_pic} alt="Profile" className="w-20 h-20 rounded-full object-cover shadow-sm border-2 border-white" />
+                      ) : (
+                        <div className="w-20 h-20 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black text-2xl shadow-sm border-2 border-white">{userProfile.initials}</div>
+                      )}
+                      <div className="flex flex-col gap-2 flex-1">
+                        <label className="text-sm font-bold text-slate-700">Profile Picture</label>
+                        <div className="flex flex-col md:flex-row gap-3">
+                          <label className="cursor-pointer bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-black px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-sm text-center">
+                            <span>Upload Image</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => setUserProfile({...userProfile, profile_pic: reader.result as string});
+                                reader.readAsDataURL(file);
+                              }
+                            }} />
+                          </label>
+                          <input type="text" value={userProfile.profile_pic || ""} onChange={(e) => setUserProfile({...userProfile, profile_pic: e.target.value})} placeholder="Or paste image URL..." className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-all font-medium" />
+                        </div>
+                        <p className="text-xs text-slate-400 font-medium">Recommended size: 256x256px. Max size: 2MB.</p>
+                      </div>
+                    </div>
+
+                    {/* Form Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+                        <input type="text" value={userProfile.name} onChange={(e) => setUserProfile({...userProfile, name: e.target.value})} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-blue-500 transition-all text-slate-900" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
+                        <input type="email" value={userProfile.email} disabled className="w-full px-4 py-3 bg-slate-100/80 text-slate-400 border border-slate-200 rounded-xl font-bold cursor-not-allowed" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Class / Academic Year</label>
+                        <div className="relative">
+                          <select value={userProfile.school_class_id || ""} onChange={(e) => setUserProfile({...userProfile, school_class_id: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-blue-500 transition-all text-slate-900 appearance-none">
+                            <option value="">Select your class...</option>
+                            {classesList.map(c => <option key={c.id} value={c.id}>{c.name} ({c.academic_year})</option>)}
+                          </select>
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Section / Cohort</label>
+                        <input type="text" value={userProfile.section || ""} onChange={(e) => setUserProfile({...userProfile, section: e.target.value})} placeholder="e.g. Section A" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-blue-500 transition-all text-slate-900" />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button type="submit" disabled={savingProfile} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-70 flex items-center gap-2">
+                        {savingProfile ? "Saving..." : "Save Profile Changes"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+
+                <hr className="border-slate-100 my-10" />
+
+                {/* --- SECURITY SECTION --- */}
+                <section>
+                  <div className="mb-8">
+                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
+                      <Lock size={18} className="text-slate-600" /> Account Security
+                    </h3>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      setSavingSettings(true);
+                      const token = localStorage.getItem("token");
+                      await axios.put(`${API_BASE_URL}/profile/password`, { oldPassword, newPassword }, { headers: { Authorization: `Bearer ${token}` } });
+                      triggerToast("Password Updated Successfully!", "success");
+                      setOldPassword("");
+                      setNewPassword("");
+                    } catch (err: any) {
+                      triggerToast(err.response?.data?.error || "Failed to update password.", "error");
+                    } finally {
+                      setSavingSettings(false);
+                    }
+                  }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Current Password</label>
+                        <input type="password" required value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-slate-900 transition-all text-slate-900" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">New Password</label>
+                        <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-slate-900 transition-all text-slate-900" />
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-end">
+                      <button type="submit" disabled={savingSettings} className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-black/10 disabled:opacity-70 flex items-center gap-2">
+                        {savingSettings ? "Updating..." : "Update Password"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+
+              </div>
             </div>
           </motion.div>
         )}
@@ -1196,7 +1350,7 @@ const StudentDashboard = () => {
               <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><X size={20} className="text-gray-600" /></button>
 
               <h2 className="text-3xl font-black mb-2 pr-10">{selectedCourse.title}</h2>
-              <p className="text-gray-500 font-medium mb-8">Unlock full lifetime access to this course.</p>
+              <p className="text-gray-500 font-medium mb-8">Submit a request to your staff to get access to this course.</p>
 
               <button onClick={handleEnrollRequest} disabled={processing} className="w-full py-4 bg-black hover:bg-gray-800 text-white rounded-xl font-bold shadow-lg shadow-black/20 transition-all disabled:opacity-70 flex items-center justify-center gap-2">
                 {processing ? "Sending Request..." : "Send Enroll Request"}

@@ -153,17 +153,19 @@ router.get('/students', async (req, res) => {
         });
 
         const out = students.map(s => {
-            const enrolled = s.enrollments.map(e => {
-                let days_left = null;
-                if (e.expiry_date) {
-                    days_left = Math.ceil((new Date(e.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
-                }
-                return {
-                    title: e.course ? e.course.title : "Unknown Course",
-                    tier: e.enrollment_type === "paid" ? "Paid" : "Free",
-                    days_left: days_left
-                };
-            });
+            const enrolled = s.enrollments
+                .filter(e => e.course != null)
+                .map(e => {
+                    let days_left = null;
+                    if (e.expiry_date) {
+                        days_left = Math.ceil((new Date(e.expiry_date) - new Date()) / (1000 * 60 * 60 * 24));
+                    }
+                    return {
+                        title: e.course.title,
+                        tier: e.enrollment_type === "paid" ? "Paid" : "Free",
+                        days_left: days_left
+                    };
+                });
 
             return {
                 id: s.id,
@@ -242,6 +244,40 @@ router.get('/classes', async (req, res) => {
     try {
         const classes = await SchoolClass.findAll({ order: [['createdAt', 'DESC']] });
         res.json(classes);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+router.put('/classes/:id', async (req, res) => {
+    try {
+        if (req.user.role !== "admin") return res.status(403).json({ detail: "Forbidden: Admins only" });
+        const { name, academic_year } = req.body;
+        const schoolClass = await SchoolClass.findByPk(req.params.id);
+        if (!schoolClass) return res.status(404).json({ detail: "Class not found" });
+        
+        schoolClass.name = name;
+        schoolClass.academic_year = academic_year;
+        await schoolClass.save();
+        res.json(schoolClass);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+router.delete('/classes/:id', async (req, res) => {
+    try {
+        if (req.user.role !== "admin") return res.status(403).json({ detail: "Forbidden: Admins only" });
+        const schoolClass = await SchoolClass.findByPk(req.params.id);
+        if (!schoolClass) return res.status(404).json({ detail: "Class not found" });
+        
+        // Unlink students from this class
+        await User.update({ school_class_id: null }, { where: { school_class_id: req.params.id } });
+        
+        await schoolClass.destroy();
+        res.json({ message: "Class deleted successfully" });
     } catch (error) {
         console.error(error);
         res.status(500).json({ detail: "Internal Server Error" });

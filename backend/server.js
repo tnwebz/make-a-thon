@@ -7,8 +7,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Routes
 app.use('/api/v1', require('./routes/auth'));
@@ -19,6 +19,7 @@ app.use('/api/v1/code-tests', require('./routes/digital_skills'));
 app.use('/api/v1/content', require('./routes/content'));
 app.use('/api/v1/user', require('./routes/user'));
 app.use('/api/v1/assignments', require('./routes/assignments'));
+app.use('/api/v1/profile', require('./routes/profile'));
 
 // Basic health check route
 app.get('/api/health', (req, res) => {

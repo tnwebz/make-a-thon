@@ -89,25 +89,11 @@ const CreateCourse = () => {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "24px" }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Price (INR)</label>
-              <div style={{ position: "relative" }}>
-                <IndianRupee size={16} style={{...iconOverlayStyle, opacity: isFree ? 0.5 : 1}} strokeWidth={1.5} />
-                <input type="number" placeholder="999" value={isFree ? 0 : formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} required={!isFree} disabled={isFree} style={{ ...inputStyle, paddingLeft: "40px", background: isFree ? "#e2e8f0" : "white", color: isFree ? "#94a3b8" : "#1e293b", cursor: isFree ? "not-allowed" : "text" }} />
-              </div>
-              <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
-                <input type="checkbox" id="freeCourse" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: brand.blue }} />
-                <label htmlFor="freeCourse" style={{ fontSize: "13px", color: "#64748b", cursor: "pointer", userSelect: "none", fontWeight: "600" }}>Set as <strong>Free Course</strong></label>
-              </div>
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Thumbnail URL (Optional)</label>
-              <div style={{ position: "relative" }}>
-                <ImageIcon size={16} style={iconOverlayStyle} strokeWidth={1.5} />
-                <input type="text" placeholder="https://image-link.com/photo.jpg" value={formData.image_url} onChange={(e) => setFormData({...formData, image_url: e.target.value})} style={{ ...inputStyle, paddingLeft: "40px" }} />
-              </div>
+          <div>
+            <label style={labelStyle}>Thumbnail URL (Optional)</label>
+            <div style={{ position: "relative" }}>
+              <ImageIcon size={16} style={iconOverlayStyle} strokeWidth={1.5} />
+              <input type="text" placeholder="https://image-link.com/photo.jpg" value={formData.image_url} onChange={(e) => setFormData({...formData, image_url: e.target.value})} style={{ ...inputStyle, paddingLeft: "40px" }} />
             </div>
           </div>
 
