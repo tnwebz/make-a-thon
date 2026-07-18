@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
-import { Search, ChevronDown, ChevronUp, CheckCircle, Calendar, Shield, Edit, Eye, EyeOff, Save, X, Plus, BookOpen, AlertCircle, UploadCloud } from "lucide-react";
+import { API_BASE_URL } from "./config";
+import { Search, ChevronDown, ChevronUp, CheckCircle, Calendar, Shield, Edit, Eye, EyeOff, Save, X, Plus, BookOpen, UploadCloud } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassToast } from "./components/GlassToast";
 
@@ -58,8 +59,8 @@ const StudentManagement = () => {
     try {
       const token = localStorage.getItem("token");
       const [resStudents, resCourses] = await Promise.all([
-        axios.get("http://127.0.0.1:8000/api/v1/admin/students", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("http://127.0.0.1:8000/api/v1/courses", { headers: { Authorization: `Bearer ${token}` } })
+        axios.get(`${API_BASE_URL}/admin/students`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${API_BASE_URL}/courses`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       setStudents(resStudents.data);
       setCourses(resCourses.data);
@@ -76,7 +77,7 @@ const StudentManagement = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      await axios.post("http://127.0.0.1:8000/api/v1/admin/admit-student", {
+      await axios.post(`${API_BASE_URL}/admin/admit-student`, {
         full_name: newStudent.name,
         email: newStudent.email,
         password: newStudent.tempPass || null,
@@ -107,7 +108,7 @@ const StudentManagement = () => {
 
       const [name, email, pass] = parts;
       try {
-        await axios.post("http://127.0.0.1:8000/api/v1/admin/admit-student", {
+        await axios.post(`${API_BASE_URL}/admin/admit-student`, {
           full_name: name,
           email: email,
           password: pass || null,
@@ -127,7 +128,7 @@ const StudentManagement = () => {
     try {
       const token = localStorage.getItem("token");
       const newStatus = s.status === "Active" ? "Suspended" : "Active";
-      await axios.patch(`http://127.0.0.1:8000/api/v1/admin/students/${s.id}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`${API_BASE_URL}/admin/students/${s.id}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
       setStudents(students.map(st => st.id === s.id ? { ...st, status: newStatus } : st));
       triggerToast(`${s.full_name} is now ${newStatus}.`, "success");
     } catch (err) {
@@ -139,7 +140,7 @@ const StudentManagement = () => {
     if (!editNameValue.trim()) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/admin/students/${s.id}/name`, { name: editNameValue }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`${API_BASE_URL}/admin/students/${s.id}/name`, { name: editNameValue }, { headers: { Authorization: `Bearer ${token}` } });
       setStudents(students.map(st => st.id === s.id ? { ...st, full_name: editNameValue } : st));
       setEditingNameId(null);
       triggerToast("Name updated.", "success");
@@ -152,7 +153,7 @@ const StudentManagement = () => {
     if (!newPasswordValue.trim()) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/admin/students/${s.id}/reset-password`, { new_password: newPasswordValue }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`${API_BASE_URL}/admin/students/${s.id}/reset-password`, { new_password: newPasswordValue }, { headers: { Authorization: `Bearer ${token}` } });
       setStudents(students.map(st => st.id === s.id ? { ...st, temp_password: newPasswordValue } : st));
       setResettingPassId(null);
       setShowPasswordMap({ ...showPasswordMap, [s.id]: true });

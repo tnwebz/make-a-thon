@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
+import { motion, AnimatePresence, useScroll } from "framer-motion";
 import {
-  Terminal, Shield, ChevronRight, Layers, Code2, Play,
-  CheckCircle, ArrowRight, X, Menu, Globe, Server, Lock,
+  Terminal, Shield, Layers, Code2, Play,
+  CheckCircle, ArrowRight, X, Menu, Lock,
   Sparkles, Users, Star, Plus, GraduationCap, Presentation,
-  BarChart3, BookOpen, ArrowUp, ArrowUpRight, Github, Twitter, Linkedin
+  BarChart3, BookOpen, ArrowUp, ArrowUpRight, Github, Twitter, Linkedin,
+  Download
 } from "lucide-react";
 
 // ============================================================================
@@ -199,9 +200,60 @@ export default function LandingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("yearly");
   const [activePlatformTab, setActivePlatformTab] = useState<"student" | "instructor">("student");
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>((window as any).deferredPrompt || null);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    // Check if already in standalone PWA mode
+    const checkStandalone = () => {
+      setIsStandalone(
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true
+      );
+    };
+    checkStandalone();
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      (window as any).deferredPrompt = e;
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+    const handleCustomPrompt = () => {
+      if ((window as any).deferredPrompt) {
+        setDeferredPrompt((window as any).deferredPrompt);
+      }
+    };
+    window.addEventListener("pwa-prompt-available", handleCustomPrompt);
+
+    // Initial check in case it fired before mount
+    if ((window as any).deferredPrompt) {
+      setDeferredPrompt((window as any).deferredPrompt);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("pwa-prompt-available", handleCustomPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    const promptEvent = deferredPrompt || (window as any).deferredPrompt;
+    if (promptEvent) {
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
+      console.log(`User choice outcome: ${outcome}`);
+      setDeferredPrompt(null);
+      (window as any).deferredPrompt = null;
+    } else {
+      alert("To install SkillForge on your Desktop:\n\n1. Click the Install icon (desktop screen with a down arrow) at the right end of your browser's address bar.\n2. Or click the Menu (three dots) at the top right of your browser, choose 'Save and share' -> 'Install page' or 'Install SkillForge'.");
+    }
+  };
 
   const { scrollYProgress } = useScroll();
-  const y = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
+
 
   useEffect(() => {
     const handleScroll = () => {
@@ -259,6 +311,14 @@ export default function LandingPage() {
 
           {/* Actions */}
           <div className="hidden md:flex items-center gap-4">
+            {!isStandalone && (
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-full text-xs font-bold border border-white/10 transition-all active:scale-95 shadow-md shadow-white/5"
+              >
+                <Download size={14} /> Add to Desktop
+              </button>
+            )}
             <button onClick={() => navigate("/login")} className="text-sm font-medium text-gray-300 hover:text-white transition-colors px-4 py-2">
               Sign In
             </button>
@@ -350,6 +410,14 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }}
             className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
           >
+            {!isStandalone && (
+              <button
+                onClick={handleInstallClick}
+                className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:from-emerald-400 hover:to-teal-500 hover:scale-105 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.2)]"
+              >
+                <Download size={20} /> Add to Desktop
+              </button>
+            )}
             <button onClick={() => navigate("/register")} className="w-full sm:w-auto bg-white text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-200 hover:scale-105 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(255,255,255,0.15)]">
               Partner with Us <ArrowRight size={20} />
             </button>

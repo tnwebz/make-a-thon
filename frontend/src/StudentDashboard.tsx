@@ -1,22 +1,22 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, Compass, Award, Settings, LogOut,
-  PlayCircle, ShoppingBag, User, Download, Clock,
+  PlayCircle, ShoppingBag, Clock,
   CreditCard, X, Lock, Save, CheckCircle,
-  Code, Play, Terminal, Monitor, AlertTriangle, Eye, EyeOff,
-  ChevronRight, Menu, Zap, Cpu, Bell, Search, LayoutDashboard,
-  CheckSquare, FileText, HelpCircle, Lightbulb, Trophy, Star,
+  Code, Play, Terminal, Monitor, AlertTriangle,
+  Cpu, Bell, Search, LayoutDashboard,
+  Trophy, Star,
   TrendingUp, Activity, Cloud, Layers, Unlock, Video
 } from "lucide-react";
 import { GlassToast } from "./components/GlassToast";
 import StudentMeetings from "./StudentMeetings";
 
 import { runPythonLocally } from './utils/pyodideEnv';
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+import { API_BASE_URL } from "./config";
 // --- TYPES ---
 interface Course { id: number; title: string; description: string; price: number; image_url: string; instructor_id: number; progress?: any; user_rating?: number; }
 interface CodeTest { id: number; title: string; time_limit: number; problems: any[]; completed?: boolean; result_status?: string; }
@@ -25,10 +25,24 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(location.state?.activeTab || "home");
-  const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
-  const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [availableCourses, setAvailableCourses] = useState<Course[]>(() => {
+    try {
+      const cached = localStorage.getItem("cached_available_courses");
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [enrolledCourses, setEnrolledCourses] = useState<Course[]>(() => {
+    try {
+      const cached = localStorage.getItem("cached_enrolled_courses");
+      return cached ? JSON.parse(cached) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [_loading, setLoading] = useState(true);
+  const [_downloadingId, setDownloadingId] = useState<number | null>(null);
 
   // Navigation & Profile State
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -61,7 +75,7 @@ const StudentDashboard = () => {
   // --- PROCTORING & IDE STATES ---
   const [timeLeft, setTimeLeft] = useState(0);
   const [violationCount, setViolationCount] = useState(0);
-  const [isFullScreen, setIsFullScreen] = useState(true);
+  const [_isFullScreen, setIsFullScreen] = useState(true);
   const [showWarningOverlay, setShowWarningOverlay] = useState(false);
 
   // Problem & Code State
@@ -99,7 +113,7 @@ const StudentDashboard = () => {
   }, [activeTab]);
 
   const fetchData = async () => {
-    setLoading(true);
+    setLoading(enrolledCourses.length === 0 && availableCourses.length === 0);
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
@@ -107,8 +121,16 @@ const StudentDashboard = () => {
       const myRes = await axios.get(`${API_BASE_URL}/my-courses`, config);
 
       const myCourseIds = new Set(myRes.data.map((c: Course) => c.id));
-      setAvailableCourses(allRes.data.filter((c: Course) => !myCourseIds.has(c.id)));
+      const filteredAvailable = allRes.data.filter((c: Course) => !myCourseIds.has(c.id));
+      
+      setAvailableCourses(filteredAvailable);
       setEnrolledCourses(myRes.data);
+
+      // Caching data for live app offline use
+      localStorage.setItem("cached_available_courses", JSON.stringify(filteredAvailable));
+      localStorage.setItem("cached_enrolled_courses", JSON.stringify(myRes.data));
+      // Caching specifically for offline.html fallback page
+      localStorage.setItem("offline_courses_cache", JSON.stringify(myRes.data));
     } catch (err: any) {
       if (err.response?.status === 401) { localStorage.clear(); navigate("/"); }
     } finally { setLoading(false); }
@@ -380,7 +402,7 @@ const StudentDashboard = () => {
       setActiveTest(res.data);
       setTimeLeft(res.data.time_limit * 60);
       setShowPassKeyModal(null);
-      if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen().catch((e) => console.log("Enable full screen")); }
+      if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen().catch((_e) => console.log("Enable full screen")); }
     } catch (err) { triggerToast("Invalid Pass Key", "error"); }
   };
 
@@ -430,7 +452,7 @@ const StudentDashboard = () => {
   };
 
   const openEnrollModal = (course: Course) => { setSelectedCourse(course); setShowModal(true); };
-  const handlePayment = async (courseId: number, price: number) => { /* Razorpay Logic */ triggerToast("Payment Portal Triggered", "success"); };
+  const handlePayment = async (_courseId: number, _price: number) => { /* Razorpay Logic */ triggerToast("Payment Portal Triggered", "success"); };
   const handleTrialParams = async () => { if (!selectedCourse) return; setProcessing(true); try { const token = localStorage.getItem("token"); await axios.post(`${API_BASE_URL}/enroll/${selectedCourse.id}`, { type: "trial" }, { headers: { Authorization: `Bearer ${token}` } }); triggerToast("Trial Activated!"); setShowModal(false); setActiveTab("learning"); fetchData(); } catch (e) { triggerToast("Error", "error"); } finally { setProcessing(false); } };
   const handleLogout = () => { localStorage.clear(); navigate("/"); };
 

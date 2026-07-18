@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { API_BASE_URL } from "./config";
 import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import {
@@ -79,7 +80,7 @@ const CourseBuilder = () => {
   const [problems, setProblems] = useState<CodeProblem[]>([
     { title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }
   ]);
-  const [activeProblemIndex, setActiveProblemIndex] = useState(0);
+  const [_activeProblemIndex, setActiveProblemIndex] = useState(0);
 
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ show: true, message, type });
@@ -95,7 +96,7 @@ const CourseBuilder = () => {
   const fetchPublishedState = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("http://127.0.0.1:8000/api/v1/courses", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`${API_BASE_URL}/courses`, { headers: { Authorization: `Bearer ${token}` } });
       const currentCourse = res.data.find((c: any) => c.id === Number(courseId));
       if (currentCourse) {
         setIsPublished(currentCourse.is_published);
@@ -107,7 +108,7 @@ const CourseBuilder = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(`http://127.0.0.1:8000/api/v1/courses/${courseId}/player`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/player`, { headers: { Authorization: `Bearer ${token}` } });
       setCourseTitle(res.data.title);
       setCourseDescription(res.data.description || "A comprehensive course designed to help students master the fundamentals.");
       setPriceAmount(res.data.price ? res.data.price.toString() : "0");
@@ -121,7 +122,7 @@ const CourseBuilder = () => {
       }
       
       try {
-        const feedbackRes = await axios.get(`http://127.0.0.1:8000/api/v1/instructor/reviews`, { headers: { Authorization: `Bearer ${token}` } });
+        const feedbackRes = await axios.get(`${API_BASE_URL}/instructor/reviews`, { headers: { Authorization: `Bearer ${token}` } });
         setFeedbacks(feedbackRes.data.filter((f: any) => f.course_id === Number(courseId)));
       } catch (err) {
         console.error("Failed to load reviews:", err);
@@ -153,7 +154,7 @@ const CourseBuilder = () => {
       setIsSavingOrder(true);
       try {
         const token = localStorage.getItem("token");
-        await axios.patch(`http://127.0.0.1:8000/api/v1/courses/${courseId}/modules/reorder`, {
+        await axios.patch(`${API_BASE_URL}/courses/${courseId}/modules/reorder`, {
           module_ids: newModules.map(m => m.id)
         }, { headers: { Authorization: `Bearer ${token}` } });
       } catch (err) {
@@ -195,7 +196,7 @@ const CourseBuilder = () => {
       setIsSavingOrder(true);
       try {
         const token = localStorage.getItem("token");
-        await axios.patch(`http://127.0.0.1:8000/api/v1/courses/${courseId}/lessons/reorder`, {
+        await axios.patch(`${API_BASE_URL}/courses/${courseId}/lessons/reorder`, {
           items: affectedLessons
         }, { headers: { Authorization: `Bearer ${token}` } });
       } catch (err) {
@@ -209,7 +210,7 @@ const CourseBuilder = () => {
     if (!newModuleTitle.trim()) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.post(`http://127.0.0.1:8000/api/v1/courses/${courseId}/modules`, {
+      await axios.post(`${API_BASE_URL}/courses/${courseId}/modules`, {
         title: newModuleTitle, order: modules.length + 1
       }, { headers: { Authorization: `Bearer ${token}` } });
       setNewModuleTitle(""); setShowAddModule(false);
@@ -222,7 +223,7 @@ const CourseBuilder = () => {
     setIsPublishing(true);
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/courses/${courseId}/publish`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`${API_BASE_URL}/courses/${courseId}/publish`, {}, { headers: { Authorization: `Bearer ${token}` } });
       setIsPublished(true);
       if (isPublished) triggerToast("Course Changes Republished Successfully!", "success");
       else triggerToast("Course Published! It is now live.", "success");
@@ -236,7 +237,7 @@ const CourseBuilder = () => {
     }
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/courses/${courseId}/finalize`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`${API_BASE_URL}/courses/${courseId}/finalize`, {}, { headers: { Authorization: `Bearer ${token}` } });
       setIsFinalized(true);
       setShowFinalizeModal(false);
       triggerToast("Course Permanently Finalized!", "success");
@@ -248,7 +249,7 @@ const CourseBuilder = () => {
     if (!confirm("Are you sure you want to delete this item? This cannot be undone.")) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.delete(`http://127.0.0.1:8000/api/v1/content/${itemId}`, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(`${API_BASE_URL}/content/${itemId}`, { headers: { Authorization: `Bearer ${token}` } });
       fetchCourseData();
       triggerToast("Item deleted successfully", "success");
     } catch (err) { triggerToast("Failed to delete item.", "error"); }
@@ -266,7 +267,7 @@ const CourseBuilder = () => {
     if (!editingItem) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/content/${editingItem.id}`, {
+      await axios.patch(`${API_BASE_URL}/content/${editingItem.id}`, {
         title: itemTitle, url: itemUrl
       }, { headers: { Authorization: `Bearer ${token}` } });
       setEditingItem(null); setActiveModal(null); fetchCourseData();
@@ -295,7 +296,7 @@ const CourseBuilder = () => {
     }
 
     try {
-      await axios.post(`http://127.0.0.1:8000/api/v1/content`, payload, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`${API_BASE_URL}/content`, payload, { headers: { Authorization: `Bearer ${token}` } });
       triggerToast(`${activeModal} added successfully!`, "success");
       setActiveModal(null); resetForm(); fetchCourseData();
       if (!expandedModules.includes(selectedModuleId)) toggleModule(selectedModuleId);
@@ -306,7 +307,7 @@ const CourseBuilder = () => {
     setIsSavingSettings(true);
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/courses/${courseId}/settings`, {
+      await axios.patch(`${API_BASE_URL}/courses/${courseId}/settings`, {
         title: courseTitle,
         description: courseDescription,
         price: priceType === "Paid" ? parseInt(priceAmount) || 0 : 0,
@@ -325,7 +326,7 @@ const CourseBuilder = () => {
     setIsSavingSettings(true);
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/courses/${courseId}/settings`, {
+      await axios.patch(`${API_BASE_URL}/courses/${courseId}/settings`, {
         image_url: ""
       }, { headers: { Authorization: `Bearer ${token}` } });
       setCourseImageUrl("");

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "./config";
 import axios from "axios";
 import { 
   ArrowLeft, Trash2, Edit2, Video, FileText, 
@@ -42,7 +43,7 @@ const CoursePreview = () => {
   const fetchCourseData = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get(`http://127.0.0.1:8000/api/v1/courses/${courseId}/player`, {
+      const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/player`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCourse(res.data);
@@ -54,7 +55,7 @@ const CoursePreview = () => {
     if (!confirm("Are you sure you want to delete this item? This cannot be undone.")) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.delete(`http://127.0.0.1:8000/api/v1/content/${itemId}`, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(`${API_BASE_URL}/content/${itemId}`, { headers: { Authorization: `Bearer ${token}` } });
       fetchCourseData(); 
       triggerToast("Item deleted successfully", "success");
     } catch (err) { triggerToast("Failed to delete item.", "error"); }
@@ -65,7 +66,7 @@ const CoursePreview = () => {
     if (!editingItem) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/content/${editingItem.id}`, { title: editTitle, url: editUrl }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`${API_BASE_URL}/content/${editingItem.id}`, { title: editTitle, url: editUrl }, { headers: { Authorization: `Bearer ${token}` } });
       setEditingItem(null); fetchCourseData(); triggerToast("Item updated successfully", "success");
     } catch (err) { triggerToast("Failed to update item.", "error"); }
   };

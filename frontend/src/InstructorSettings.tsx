@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "./config";
 import { Lock, Save } from "lucide-react";
 
 const InstructorSettings = () => {
@@ -21,7 +22,7 @@ const InstructorSettings = () => {
     setSaving(true);
     try {
       const token = localStorage.getItem("token");
-      await axios.post("http://127.0.0.1:8000/api/v1/user/change-password", { new_password: newPassword }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`${API_BASE_URL}/user/change-password`, { new_password: newPassword }, { headers: { Authorization: `Bearer ${token}` } });
       alert("✅ Password updated successfully!");
       setNewPassword("");
     } catch (err) { alert("Failed to update password."); } 
@@ -38,7 +39,7 @@ const InstructorSettings = () => {
     setSavingZoom(true);
     try {
       const token = localStorage.getItem("token");
-      await axios.post("http://127.0.0.1:8000/api/v1/user/zoom-credentials", 
+      await axios.post(`${API_BASE_URL}/user/zoom-credentials`, 
         { account_id: zoomAccountId, client_id: zoomClientId, client_secret: zoomClientSecret }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );

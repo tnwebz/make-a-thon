@@ -3,11 +3,9 @@ const bcrypt = require('bcrypt');
 
 async function seedUsers() {
     try {
-        // Ensure database connection
         await sequelize.authenticate();
-        console.log('Connection to the database has been established successfully.');
+        console.log('Database connection authenticated.');
 
-        // Function to hash password
         const getPasswordHash = async (password) => {
             const salt = await bcrypt.genSalt(10);
             return await bcrypt.hash(password, salt);
@@ -15,46 +13,63 @@ async function seedUsers() {
 
         const passwordHash = await getPasswordHash('123');
 
-        // Create Student
+        // Seed / Update Student: student@gmail.com / 123
         const [student, createdStudent] = await User.findOrCreate({
             where: { email: 'student@gmail.com' },
             defaults: {
-                full_name: 'Test Student',
+                full_name: 'Student Learner',
                 hashed_password: passwordHash,
                 role: 'student',
                 status: 'Active',
                 temp_password: '123'
             }
         });
-
-        if (createdStudent) {
-            console.log('✅ Student user created: student@gmail.com');
+        if (!createdStudent) {
+            await student.update({ hashed_password: passwordHash, status: 'Active', role: 'student' });
+            console.log('🔄 Student user updated: student@gmail.com');
         } else {
-            console.log('⚠️ Student user already exists.');
+            console.log('✅ Student user created: student@gmail.com');
         }
 
-        // Create Instructor
+        // Seed / Update Instructor: staff@gmail.com / 123
         const [instructor, createdInstructor] = await User.findOrCreate({
-            where: { email: 'admin@gmail.com' },
+            where: { email: 'staff@gmail.com' },
             defaults: {
-                full_name: 'Test Instructor',
+                full_name: 'Staff Instructor',
                 hashed_password: passwordHash,
                 role: 'instructor',
                 status: 'Active',
                 temp_password: '123'
             }
         });
-
-        if (createdInstructor) {
-            console.log('✅ Instructor user created: admin@gmail.com');
+        if (!createdInstructor) {
+            await instructor.update({ hashed_password: passwordHash, status: 'Active', role: 'instructor' });
+            console.log('🔄 Instructor user updated: staff@gmail.com');
         } else {
-            console.log('⚠️ Instructor user already exists.');
+            console.log('✅ Instructor user created: staff@gmail.com');
+        }
+
+        // Seed / Update Instructor: admin@gmail.com / 123
+        const [adminInstructor, createdAdminInstructor] = await User.findOrCreate({
+            where: { email: 'admin@gmail.com' },
+            defaults: {
+                full_name: 'Admin Instructor',
+                hashed_password: passwordHash,
+                role: 'instructor',
+                status: 'Active',
+                temp_password: '123'
+            }
+        });
+        if (!createdAdminInstructor) {
+            await adminInstructor.update({ hashed_password: passwordHash, status: 'Active', role: 'instructor' });
+            console.log('🔄 Instructor user updated: admin@gmail.com');
+        } else {
+            console.log('✅ Instructor user created: admin@gmail.com');
         }
 
     } catch (error) {
-        console.error('❌ Unable to connect to the database or create users:', error);
+        console.error('❌ Error seeding database users:', error);
     } finally {
-        // Close the connection
         await sequelize.close();
     }
 }

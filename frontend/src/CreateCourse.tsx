@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "./config";
 import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-react";
 
 const CreateCourse = () => {
@@ -24,7 +25,7 @@ const CreateCourse = () => {
     try {
       const token = localStorage.getItem("token");
       const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
-      const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url }, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.post(`${API_BASE_URL}/courses`, { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url }, { headers: { Authorization: `Bearer ${token}` } });
       alert("Course Created Successfully! 🎉 Let's add some content.");
       navigate(`/dashboard/course/${response.data.id}/builder`);
     } catch (error: any) { console.error(error); alert("Failed to create course."); } finally { setLoading(false); }

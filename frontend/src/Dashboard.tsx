@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "./config";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Users, IndianRupee, BookOpen, ArrowUpRight, PlusCircle, CheckCircle, 
@@ -72,7 +73,6 @@ const Dashboard = () => {
     const fetchReviews = async () => {
       try {
         const token = localStorage.getItem("token");
-        const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
         const res = await axios.get(`${API_BASE_URL}/instructor/reviews`, {
           headers: { Authorization: `Bearer ${token}` }
         });

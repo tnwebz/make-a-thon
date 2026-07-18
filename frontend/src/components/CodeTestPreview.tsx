@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import axios from "axios";
 
 import { 
-  Play, CheckCircle, XCircle, AlertTriangle, 
-  ChevronLeft, ChevronRight, Clock, RefreshCw 
+  Play, CheckCircle, XCircle,
+  Clock, RefreshCw 
 } from "lucide-react";
 
 // --- ⚙️ JUDGE0 API CONFIG ---
@@ -19,7 +19,7 @@ export const CodeTestPreview = ({ lesson }: { lesson: any }) => {
   const [code, setCode] = useState("// Write your code here (Node.js)...\n// Use console.log() to print output\n\nfunction solution(input) {\n  const [a, b] = input.split(' ');\n  console.log(parseInt(a) + parseInt(b));\n}\n\n// Reading stdin for Judge0\nconst fs = require('fs');\nconst input = fs.readFileSync(0, 'utf-8');\nif (input) solution(input);");
   const [consoleOutput, setConsoleOutput] = useState("Output will appear here after running your code...");
   const [activeTab, setActiveTab] = useState<"input" | "expected">("input");
-  const [activeCaseIndex, setActiveCaseIndex] = useState(0);
+  const [activeCaseIndex, _setActiveCaseIndex] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [testResults, setTestResults] = useState<any[]>([]);
 

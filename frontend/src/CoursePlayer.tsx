@@ -13,7 +13,7 @@ import {
   Unlock, Award, Play, Save, Monitor, Cpu, ExternalLink
 } from "lucide-react";
 
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+import { API_BASE_URL } from "./config";
 
 // --- 💻 COMPONENT: PROFESSIONAL CODE ARENA ---
 const CodeCompiler = ({ lesson }: { lesson: any }) => {
@@ -160,7 +160,14 @@ const WindowsLoader = () => {
 const CoursePlayer = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
-  const [course, setCourse] = useState<any>(null);
+  const [course, setCourse] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem(`cached_course_player_${courseId}`);
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [activeLesson, setActiveLesson] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedModules, setExpandedModules] = useState<number[]>([]);
@@ -195,11 +202,22 @@ const CoursePlayer = () => {
         const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/player`, { headers: { Authorization: `Bearer ${token}` } });
         setCourse(res.data);
         setCompletedLessons(res.data.completed_lessons || []);
+        
+        // Cache this course data for offline usage
+        localStorage.setItem(`cached_course_player_${courseId}`, JSON.stringify(res.data));
+
         if (res.data.modules?.[0]) {
           setExpandedModules([res.data.modules[0].id]);
           if (res.data.modules[0].lessons?.length > 0) setActiveLesson(res.data.modules[0].lessons[0]);
         }
-      } catch (err) { console.error(err); }
+      } catch (err) { 
+        console.error(err); 
+        // If offline and we loaded a cached course, auto-select first lesson so player works
+        if (course && course.modules?.[0]) {
+          setExpandedModules([course.modules[0].id]);
+          if (course.modules[0].lessons?.length > 0) setActiveLesson(course.modules[0].lessons[0]);
+        }
+      }
     };
     fetchCourse();
   }, [courseId]);

@@ -3,11 +3,11 @@ import axios from "axios";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import type { View } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay } from "date-fns";
-import enUS from "date-fns/locale/en-US";
+import { enUS } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Video, PlusCircle, MoreHorizontal, Calendar as CalendarIcon, 
+  Video, MoreHorizontal, Calendar as CalendarIcon, 
   Trash2, Copy, CheckCircle, ExternalLink, X, Clock
 } from "lucide-react"; 
 
@@ -23,7 +23,7 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+import { API_BASE_URL } from "./config";
 
 interface Course {
   id: number;
@@ -44,7 +44,7 @@ interface ScheduledMeeting {
 const MeetingManager = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -171,7 +171,7 @@ const MeetingManager = () => {
   };
 
   // Custom Calendar Styles overrides
-  const eventStyleGetter = (event: any, start: Date, end: Date, isSelected: boolean) => {
+  const eventStyleGetter = (_event: any, _start: Date, _end: Date, isSelected: boolean) => {
     return {
       style: {
         backgroundColor: isSelected ? "#312e81" : "#4f46e5",

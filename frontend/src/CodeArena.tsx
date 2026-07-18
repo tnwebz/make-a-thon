@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { API_BASE_URL } from "./config";
 import axios from "axios";
 import {
     Plus, Code, ChevronRight, ChevronDown, X, Sparkles, Check, Trash2, AlertCircle, CheckCircle, Download, Edit2, Users
@@ -31,7 +32,7 @@ const CodeArena = () => {
     // --- CURRENT PROBLEM STATE ---
     const [probTitle, setProbTitle] = useState("");
     const [probDesc, setProbDesc] = useState("");
-    const [difficulty, setDifficulty] = useState("Easy");
+    const [difficulty, _setDifficulty] = useState("Easy");
     const [testCases, setTestCases] = useState([{ input: "", output: "", hidden: false }]);
     const [aiLoading, setAiLoading] = useState(false);
 
@@ -45,7 +46,7 @@ const CodeArena = () => {
     const fetchTests = async () => {
         const token = localStorage.getItem("token");
         try {
-            const res = await axios.get("http://127.0.0.1:8000/api/v1/code-tests", { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.get(`${API_BASE_URL}/code-tests`, { headers: { Authorization: `Bearer ${token}` } });
             setTests(res.data);
         } catch (err) { console.error(err); }
     };
@@ -57,7 +58,7 @@ const CodeArena = () => {
         }
         const token = localStorage.getItem("token");
         try {
-            const res = await axios.get(`http://127.0.0.1:8000/api/v1/code-tests/${testId}/results`, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.get(`${API_BASE_URL}/code-tests/${testId}/results`, { headers: { Authorization: `Bearer ${token}` } });
             setTestResults(res.data);
             setExpandedTestId(testId);
         } catch (err) { triggerToast("Failed to load results", "error"); }
@@ -66,7 +67,7 @@ const CodeArena = () => {
     const handleExport = async (testId: number, title: string) => {
         const token = localStorage.getItem("token");
         try {
-            const res = await axios.get(`http://127.0.0.1:8000/api/v1/code-tests/${testId}/export`, { 
+            const res = await axios.get(`${API_BASE_URL}/code-tests/${testId}/export`, { 
                 headers: { Authorization: `Bearer ${token}` },
                 responseType: 'blob' 
             });
@@ -85,7 +86,7 @@ const CodeArena = () => {
         if (!confirm("Are you sure you want to delete this test?")) return;
         const token = localStorage.getItem("token");
         try {
-            await axios.delete(`http://127.0.0.1:8000/api/v1/code-tests/${testId}`, { headers: { Authorization: `Bearer ${token}` } });
+            await axios.delete(`${API_BASE_URL}/code-tests/${testId}`, { headers: { Authorization: `Bearer ${token}` } });
             triggerToast("Test deleted successfully", "success");
             fetchTests();
         } catch (err) { triggerToast("Failed to delete", "error"); }
@@ -111,7 +112,7 @@ const CodeArena = () => {
         setAiLoading(true);
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.post("http://127.0.0.1:8000/api/v1/ai/generate", { title: probTitle }, { headers: { Authorization: `Bearer ${token}` } });
+            const res = await axios.post(`${API_BASE_URL}/ai/generate`, { title: probTitle }, { headers: { Authorization: `Bearer ${token}` } });
 
             setProbDesc(res.data.description);
             setTestCases(JSON.parse(res.data.test_cases));
@@ -170,10 +171,10 @@ const CodeArena = () => {
                 problems: addedProblems // Send the list of problems
             };
             if (editingTestId) {
-                await axios.put(`http://127.0.0.1:8000/api/v1/code-tests/${editingTestId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+                await axios.put(`${API_BASE_URL}/code-tests/${editingTestId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
                 triggerToast("Challenge Updated Successfully!", "success");
             } else {
-                await axios.post("http://127.0.0.1:8000/api/v1/code-tests", payload, { headers: { Authorization: `Bearer ${token}` } });
+                await axios.post(`${API_BASE_URL}/code-tests`, payload, { headers: { Authorization: `Bearer ${token}` } });
                 triggerToast("Challenge Created Successfully!", "success");
             }
             setShowModal(false);

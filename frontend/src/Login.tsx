@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "./config";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -95,12 +96,12 @@ const Login = () => {
   const verifyOtp = () => {
     if(!otp) return;
     setLoading(true);
-    confirmationResult.confirm(otp).then(async (result: any) => {
+    confirmationResult.confirm(otp).then(async (_result: any) => {
         setIsPhoneVerified(true);
         setLoading(false);
         triggerToast("Phone Verified! Creating Account...", "success");
         await finalizeSignup();
-    }).catch((error: any) => {
+    }).catch((_error: any) => {
         setLoading(false);
         triggerToast("Invalid OTP. Please try again.", "error");
     });
@@ -108,7 +109,7 @@ const Login = () => {
 
   const finalizeSignup = async () => {
       try {
-        await axios.post("http://127.0.0.1:8000/api/v1/users", { 
+        await axios.post(`${API_BASE_URL}/users`, { 
             email: formData.email, 
             password: formData.password, 
             name: formData.name, 
@@ -136,7 +137,7 @@ const Login = () => {
             loginParams.append("username", formData.email); 
             loginParams.append("password", formData.password);
             
-            const res = await axios.post("http://127.0.0.1:8000/api/v1/login", loginParams);
+            const res = await axios.post(`${API_BASE_URL}/login`, loginParams);
             
             if (res.data.role !== "student") { 
                 triggerToast("Please use the Admin Portal for Instructor access.", "error"); 

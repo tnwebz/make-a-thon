@@ -1,7 +1,7 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { 
-  Plus, Code, ChevronRight, X, Sparkles, Check, Trash2, Edit 
+  Plus, Code, ChevronRight, X, Sparkles, Check, Trash2 
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -18,7 +18,7 @@ const CodeArena = () => {
   // --- CURRENT PROBLEM STATE ---
   const [probTitle, setProbTitle] = useState("");
   const [probDesc, setProbDesc] = useState("");
-  const [difficulty, setDifficulty] = useState("Easy");
+  const [difficulty, _setDifficulty] = useState("Easy");
   const [testCases, setTestCases] = useState([{ input: "", output: "", hidden: false }]);
   const [aiLoading, setAiLoading] = useState(false);
 

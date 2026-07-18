@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import type { View } from "react-big-calendar";
@@ -8,9 +8,10 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { Video, Calendar as CalendarIcon, ExternalLink, X, Clock } from "lucide-react"; 
 
+import { API_BASE_URL } from "./config";
+
 const locales = { "en-US": enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 
 interface ScheduledMeeting {
   id: number;
@@ -26,7 +27,7 @@ interface ScheduledMeeting {
 
 const StudentMeetings = () => {
   const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<ScheduledMeeting | null>(null);
   const [view, setView] = useState<View>("month");
   const [date, setDate] = useState(new Date());
@@ -65,7 +66,7 @@ const StudentMeetings = () => {
     setSelectedEvent(event.resource);
   };
 
-  const eventStyleGetter = (event: any, start: Date, end: Date, isSelected: boolean) => {
+  const eventStyleGetter = (_event: any, _start: Date, _end: Date, isSelected: boolean) => {
     return {
       style: {
         backgroundColor: isSelected ? "#0f172a" : "#1e293b",

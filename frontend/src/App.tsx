@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
 import AdminLogin from "./AdminLogin";
@@ -20,9 +21,22 @@ import MeetingManager from "./MeetingManager";
 
 // CourseList is now imported from ./CourseList
 
+import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
+import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
+import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
+
 function App() {
+  useEffect(() => {
+    if (!navigator.onLine) {
+      window.location.replace("/offline.html");
+    }
+  }, []);
+
   return (
     <Router>
+      <PwaInstallPrompt />
+      <PwaUpdatePrompt />
+      <NetworkStatusBanner />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />

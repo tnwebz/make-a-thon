@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "./config";
 import axios from "axios";
 import { PlusCircle, BookOpen, Trash2, Users, Star, Settings, Play } from "lucide-react";
 import { motion } from "framer-motion";
@@ -17,7 +18,7 @@ const CourseList = () => {
                 return;
             }
             try {
-                const res = await axios.get("http://127.0.0.1:8000/api/v1/courses", {
+                const res = await axios.get(`${API_BASE_URL}/courses`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 setCourses(res.data);
@@ -39,7 +40,7 @@ const CourseList = () => {
 
         try {
             const token = localStorage.getItem("token");
-            await axios.delete(`http://127.0.0.1:8000/api/v1/courses/${courseId}`, {
+            await axios.delete(`${API_BASE_URL}/courses/${courseId}`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             setCourses(courses.filter((c: any) => c.id !== courseId));

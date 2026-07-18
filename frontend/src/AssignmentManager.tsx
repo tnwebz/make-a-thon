@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { API_BASE_URL } from "./config";
 import axios from "axios";
 import { CheckCircle, XCircle, Download, Search, Filter, User } from "lucide-react";
 
@@ -23,7 +24,7 @@ const AssignmentManager = () => {
   const fetchSubmissions = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("http://127.0.0.1:8000/api/v1/assignments/submissions", {
+      const res = await axios.get(`${API_BASE_URL}/assignments/submissions`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSubmissions(res.data);
@@ -38,7 +39,7 @@ const AssignmentManager = () => {
   const updateStatus = async (submissionId: number, status: "Accepted" | "Rejected") => {
     const token = localStorage.getItem("token");
     try {
-      await axios.patch(`http://127.0.0.1:8000/api/v1/assignments/${submissionId}/status`, 
+      await axios.patch(`${API_BASE_URL}/assignments/${submissionId}/status`, 
         { status }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
