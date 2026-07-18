@@ -10,7 +10,7 @@ import { GlassToast } from "./components/GlassToast";
 import {
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle,
   UploadCloud, CheckCircle, ChevronDown, ChevronRight, Lock,
-  Unlock, Award, Play, Save, Monitor, Cpu, ExternalLink
+  Unlock, Award, Play, Save, Monitor, Cpu, ExternalLink, Download, Loader2
 } from "lucide-react";
 
 import { API_BASE_URL } from "./config";
@@ -174,6 +174,8 @@ const CoursePlayer = () => {
   const [completedLessons, setCompletedLessons] = useState<number[]>([]);
   const [isMarking, setIsMarking] = useState(false);
   const [contentLoading, setContentLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   const [toast, setToast] = useState({ show: false, msg: "", type: "success" });
   const [showPendingCertModal, setShowPendingCertModal] = useState(false);
@@ -271,8 +273,40 @@ const CoursePlayer = () => {
     }
   };
 
-  const getEmbedUrl = (url: string) => url ? (url.includes("docs.google.com/forms") ? url.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true") : url.replace("/view", "/preview")) : "";
-  const getYoutubeId = (url: string) => { const match = url?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; };
+  const getEmbedUrl = (content: string) => content ? (content.includes("docs.google.com/forms") ? content.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true") : content.replace("/view", "/preview")) : "";
+  const getYoutubeId = (content: string) => { const match = content?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; };
+
+  const handleDownloadYoutube = async (url: string, title: string) => {
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    
+    // Fake progress animation for a much better user experience in hackathon
+    const interval = setInterval(() => {
+      setDownloadProgress(prev => {
+        if (prev >= 90) return prev;
+        return prev + Math.floor(Math.random() * 10) + 5;
+      });
+    }, 500);
+
+    triggerToast("Starting download... This may take a minute.", "success");
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(`${API_BASE_URL}/offline/download`, { url, title }, { headers: { Authorization: `Bearer ${token}` } });
+      setDownloadProgress(100);
+      setTimeout(() => {
+          triggerToast("Download complete! Available in ShareHub.", "success");
+          setIsDownloading(false);
+          setDownloadProgress(0);
+      }, 500);
+    } catch (err) {
+      console.error(err);
+      triggerToast("Failed to download video.", "error");
+      setIsDownloading(false);
+      setDownloadProgress(0);
+    } finally {
+      clearInterval(interval);
+    }
+  };
 
   const renderContent = () => {
     if (!activeLesson) return <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase">Select a lesson to begin</div>;
@@ -299,27 +333,55 @@ const CoursePlayer = () => {
 
           {activeLesson.type === "note" && (
             <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
-              <iframe 
-                src={getEmbedUrl(activeLesson.url)} 
-                className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
-                onLoad={() => setContentLoading(false)}
-              />
+              {activeLesson.content ? (
+                <iframe 
+                  src={getEmbedUrl(activeLesson.content)} 
+                  className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
+                  onLoad={() => setContentLoading(false)}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem]">No notes uploaded</div>
+              )}
             </div>
           )}
 
           {activeLesson.type === "quiz" && (
             <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
-              <iframe 
-                src={getEmbedUrl(activeLesson.url)} 
-                className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
-                onLoad={() => setContentLoading(false)}
-              />
+              {activeLesson.content ? (
+                <iframe 
+                  src={getEmbedUrl(activeLesson.content)} 
+                  className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
+                  onLoad={() => setContentLoading(false)}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem]">No quiz uploaded</div>
+              )}
             </div>
           )}
 
           {(activeLesson.type === "video" || activeLesson.type === "live_class") && (
             <div className="w-full flex flex-col items-center justify-center h-full">
-              <div className="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative">
+              <div className="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative group">
+                
+                {/* Download Button Overlay */}
+                {getYoutubeId(activeLesson.content) && (
+                  <button
+                    onClick={() => handleDownloadYoutube(activeLesson.content, activeLesson.title)}
+                    disabled={isDownloading}
+                    className="absolute top-4 right-4 z-50 px-4 py-2 bg-black/60 hover:bg-black/80 backdrop-blur text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center overflow-hidden min-w-[160px] opacity-0 group-hover:opacity-100 disabled:opacity-100 shadow-xl border border-white/10"
+                  >
+                    {isDownloading && (
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 bg-emerald-500/50 transition-all duration-300 ease-out" 
+                        style={{ width: `${downloadProgress}%` }}
+                      />
+                    )}
+                    <div className="relative z-10 flex items-center gap-2">
+                      {isDownloading ? <Loader2 size={16} className="animate-spin text-emerald-400" /> : <Download size={16} />}
+                      {isDownloading ? `Downloading... ${downloadProgress}%` : "Download Offline"}
+                    </div>
+                  </button>
+                )}
 
                 {/* 🛡️ FORCEFIELD & CROP MAGIC (Untouched logic) */}
                 <style>{`
@@ -333,13 +395,32 @@ const CoursePlayer = () => {
                   .plyr__control--overlaid:hover { background: rgba(255,255,255,0.2) !important; }
                 `}</style>
 
-                {getYoutubeId(activeLesson.url) ? (
+                {getYoutubeId(activeLesson.content) ? (
                   <Plyr
                     source={{
                       type: "video",
-                      sources: [{ src: getYoutubeId(activeLesson.url) || "", provider: "youtube" }]
+                      sources: [{ src: getYoutubeId(activeLesson.content)!, provider: "youtube" }]
                     }}
                     options={plyrOptions}
+                  />
+                ) : activeLesson.content && (activeLesson.content.endsWith(".mp4") || activeLesson.content.endsWith(".webm") || activeLesson.content.endsWith(".ogg")) ? (
+                  <Plyr
+                    source={{
+                      type: "video",
+                      sources: [{ src: activeLesson.content, provider: "html5" }]
+                    }}
+                    options={{
+                      controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+                      autoplay: true,
+                      keyboard: { focused: true, global: true }
+                    }}
+                  />
+                ) : activeLesson.content ? (
+                  <iframe 
+                    src={getEmbedUrl(activeLesson.content)} 
+                    className="w-full h-full rounded-[1.5rem] border-0 bg-black" 
+                    allowFullScreen
+                    onLoad={() => setContentLoading(false)}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase">Invalid Video Source</div>

@@ -62,4 +62,35 @@ router.get('/certificate/:course_id', authMiddleware, async (req, res) => {
     }
 });
 
+router.patch('/:id', authMiddleware, async (req, res) => {
+    try {
+        const item = await ContentItem.findByPk(req.params.id);
+        if (!item) return res.status(404).json({ detail: "Not found" });
+        
+        await item.update({
+            title: req.body.title || item.title,
+            content: req.body.url || item.content,
+            duration: req.body.duration !== undefined ? req.body.duration : item.duration,
+            is_mandatory: req.body.is_mandatory !== undefined ? req.body.is_mandatory : item.is_mandatory,
+            instructions: req.body.instructions !== undefined ? req.body.instructions : item.instructions
+        });
+        res.json({ message: "Updated" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+router.delete('/:id', authMiddleware, async (req, res) => {
+    try {
+        const item = await ContentItem.findByPk(req.params.id);
+        if (!item) return res.status(404).json({ detail: "Not found" });
+        await item.destroy();
+        res.json({ message: "Deleted" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
 module.exports = router;

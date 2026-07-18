@@ -4,7 +4,9 @@ const bcrypt = require('bcrypt');
 async function seedUsers() {
     try {
         await sequelize.authenticate();
-        console.log('Database connection authenticated.');
+        console.log('Connection to the database has been established successfully.');
+        await sequelize.sync({ alter: true });
+        console.log('Database synced successfully.');
 
         const getPasswordHash = async (password) => {
             const salt = await bcrypt.genSalt(10);

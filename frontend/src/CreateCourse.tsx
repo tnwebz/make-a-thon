@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "./config";
@@ -7,8 +7,22 @@ import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-
 const CreateCourse = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ title: "", description: "", price: "", image_url: "", duration: "" });
+  const [formData, setFormData] = useState({ title: "", description: "", price: "", image_url: "", duration: "", school_class_id: "none" });
   const [isFree, setIsFree] = useState(false);
+  const [classes, setClasses] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get("http://127.0.0.1:8000/api/v1/admin/classes", { headers: { Authorization: `Bearer ${token}` } });
+        setClasses(res.data);
+      } catch (err) {
+        console.error("Failed to load classes", err);
+      }
+    };
+    fetchClasses();
+  }, []);
 
   // 🎨 PROFESSIONAL THEME
   const brand = {
@@ -25,7 +39,7 @@ const CreateCourse = () => {
     try {
       const token = localStorage.getItem("token");
       const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
-      const response = await axios.post(`${API_BASE_URL}/courses`, { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url }, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.post(`${API_BASE_URL}/courses`, { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url, school_class_id: formData.school_class_id }, { headers: { Authorization: `Bearer ${token}` } });
       alert("Course Created Successfully! 🎉 Let's add some content.");
       navigate(`/dashboard/course/${response.data.id}/builder`);
     } catch (error: any) { console.error(error); alert("Failed to create course."); } finally { setLoading(false); }
@@ -60,6 +74,15 @@ const CreateCourse = () => {
           </div>
 
           <div>
+            <label style={labelStyle}>Target School Class (Optional)</label>
+            <select value={formData.school_class_id} onChange={(e) => setFormData({...formData, school_class_id: e.target.value})} style={inputStyle}>
+              <option value="none">-- Not Tied to a Specific Class --</option>
+              {classes.map(c => <option key={c.id} value={c.id}>{c.name} ({c.academic_year})</option>)}
+            </select>
+            <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>Select a class if you want to deliver this course to specific sections (batches).</p>
+          </div>
+
+          <div>
             <label style={labelStyle}>Total Course Duration</label>
             <div style={{ position: "relative" }}>
               <Clock size={16} style={iconOverlayStyle} strokeWidth={1.5} />
@@ -67,25 +90,11 @@ const CreateCourse = () => {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "24px" }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Price (INR)</label>
-              <div style={{ position: "relative" }}>
-                <IndianRupee size={16} style={{...iconOverlayStyle, opacity: isFree ? 0.5 : 1}} strokeWidth={1.5} />
-                <input type="number" placeholder="999" value={isFree ? 0 : formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} required={!isFree} disabled={isFree} style={{ ...inputStyle, paddingLeft: "40px", background: isFree ? "#e2e8f0" : "white", color: isFree ? "#94a3b8" : "#1e293b", cursor: isFree ? "not-allowed" : "text" }} />
-              </div>
-              <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
-                <input type="checkbox" id="freeCourse" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} style={{ width: "16px", height: "16px", cursor: "pointer", accentColor: brand.blue }} />
-                <label htmlFor="freeCourse" style={{ fontSize: "13px", color: "#64748b", cursor: "pointer", userSelect: "none", fontWeight: "600" }}>Set as <strong>Free Course</strong></label>
-              </div>
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Thumbnail URL (Optional)</label>
-              <div style={{ position: "relative" }}>
-                <ImageIcon size={16} style={iconOverlayStyle} strokeWidth={1.5} />
-                <input type="text" placeholder="https://image-link.com/photo.jpg" value={formData.image_url} onChange={(e) => setFormData({...formData, image_url: e.target.value})} style={{ ...inputStyle, paddingLeft: "40px" }} />
-              </div>
+          <div>
+            <label style={labelStyle}>Thumbnail URL (Optional)</label>
+            <div style={{ position: "relative" }}>
+              <ImageIcon size={16} style={iconOverlayStyle} strokeWidth={1.5} />
+              <input type="text" placeholder="https://image-link.com/photo.jpg" value={formData.image_url} onChange={(e) => setFormData({...formData, image_url: e.target.value})} style={{ ...inputStyle, paddingLeft: "40px" }} />
             </div>
           </div>
 

@@ -7,10 +7,10 @@ import {
   BookOpen, Compass, Award, Settings, LogOut,
   PlayCircle, ShoppingBag, Clock,
   CreditCard, X, Lock, Save, CheckCircle,
-  Code, Play, Terminal, Monitor, AlertTriangle,
-  Cpu, Bell, Search, LayoutDashboard,
-  Trophy, Star,
-  TrendingUp, Activity, Cloud, Layers, Unlock, Video
+  Code, Play, Terminal, Monitor, AlertTriangle, Eye, EyeOff,
+  ChevronRight, Menu, Zap, Cpu, Bell, Search, LayoutDashboard,
+  CheckSquare, FileText, HelpCircle, Lightbulb, Trophy, Star,
+  TrendingUp, Activity, Cloud, Layers, Unlock, Video, Users, Share2
 } from "lucide-react";
 import { GlassToast } from "./components/GlassToast";
 import StudentMeetings from "./StudentMeetings";
@@ -41,22 +41,26 @@ const StudentDashboard = () => {
       return [];
     }
   });
-  const [_loading, setLoading] = useState(true);
-  const [_downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   // Navigation & Profile State
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [activityTab, setActivityTab] = useState("assignments");
 
-  const userData = { name: "Student", email: "student@skillforge.com", initials: "ST" };
+  const [userProfile, setUserProfile] = useState<any>({ name: "Student", email: "", initials: "ST", profile_pic: "" });
 
   // Modal & Settings
   const [showModal, setShowModal] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [classesList, setClassesList] = useState<any[]>([]);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
 
   // --- REVIEW SYSTEM STATES ---
@@ -117,20 +121,38 @@ const StudentDashboard = () => {
     try {
       const token = localStorage.getItem("token");
       const config = { headers: { Authorization: `Bearer ${token}` } };
+      const profileRes = await axios.get(`${API_BASE_URL}/profile`, config);
+      setUserProfile({
+        ...profileRes.data,
+        name: profileRes.data.full_name,
+        initials: profileRes.data.full_name.substring(0, 2).toUpperCase()
+      });
+
       const allRes = await axios.get(`${API_BASE_URL}/courses`, config);
       const myRes = await axios.get(`${API_BASE_URL}/my-courses`, config);
+      const dashRes = await axios.get(`${API_BASE_URL}/student/dashboard`, config);
+      
+      try {
+        const classesRes = await axios.get(`${API_BASE_URL}/profile/classes`);
+        setClassesList(classesRes.data);
+      } catch (e) { console.error("Error fetching classes"); }
 
       const myCourseIds = new Set(myRes.data.map((c: Course) => c.id));
       const filteredAvailable = allRes.data.filter((c: Course) => !myCourseIds.has(c.id));
-      
       setAvailableCourses(filteredAvailable);
-      setEnrolledCourses(myRes.data);
+      
+      const enrolledWithProgress = myRes.data.map((course: Course) => {
+          const dashCourse = dashRes.data.enrolled_courses.find((dc: any) => dc.id === course.id);
+          return { ...course, progress: dashCourse ? dashCourse.progress : 0 };
+      });
+      setEnrolledCourses(enrolledWithProgress);
+      setDashboardData(dashRes.data);
 
       // Caching data for live app offline use
       localStorage.setItem("cached_available_courses", JSON.stringify(filteredAvailable));
-      localStorage.setItem("cached_enrolled_courses", JSON.stringify(myRes.data));
+      localStorage.setItem("cached_enrolled_courses", JSON.stringify(enrolledWithProgress));
       // Caching specifically for offline.html fallback page
-      localStorage.setItem("offline_courses_cache", JSON.stringify(myRes.data));
+      localStorage.setItem("offline_courses_cache", JSON.stringify(enrolledWithProgress));
     } catch (err: any) {
       if (err.response?.status === 401) { localStorage.clear(); navigate("/"); }
     } finally { setLoading(false); }
@@ -395,8 +417,8 @@ const StudentDashboard = () => {
   const handleStartTest = async () => {
     const token = localStorage.getItem("token");
     try {
-      const formData = new FormData(); formData.append("pass_key", passKeyInput);
-      const res = await axios.post(`${API_BASE_URL}/code-tests/${showPassKeyModal}/start`, formData, { headers: { Authorization: `Bearer ${token}` } });
+      const payload = { pass_key: passKeyInput };
+      const res = await axios.post(`${API_BASE_URL}/code-tests/${showPassKeyModal}/start`, payload, { headers: { Authorization: `Bearer ${token}` } });
       const prevWarns = localStorage.getItem(`warns_${res.data.id}`);
       if (prevWarns && parseInt(prevWarns) > 2) { triggerToast("⛔ You have been disqualified from this test.", "error"); return; }
       setActiveTest(res.data);
@@ -452,8 +474,8 @@ const StudentDashboard = () => {
   };
 
   const openEnrollModal = (course: Course) => { setSelectedCourse(course); setShowModal(true); };
-  const handlePayment = async (_courseId: number, _price: number) => { /* Razorpay Logic */ triggerToast("Payment Portal Triggered", "success"); };
-  const handleTrialParams = async () => { if (!selectedCourse) return; setProcessing(true); try { const token = localStorage.getItem("token"); await axios.post(`${API_BASE_URL}/enroll/${selectedCourse.id}`, { type: "trial" }, { headers: { Authorization: `Bearer ${token}` } }); triggerToast("Trial Activated!"); setShowModal(false); setActiveTab("learning"); fetchData(); } catch (e) { triggerToast("Error", "error"); } finally { setProcessing(false); } };
+  const handlePayment = async (courseId: number, price: number) => { /* Razorpay Logic */ triggerToast("Payment Portal Triggered", "success"); };
+  const handleEnrollRequest = async () => { if (!selectedCourse) return; setProcessing(true); try { const token = localStorage.getItem("token"); await axios.post(`${API_BASE_URL}/enroll/${selectedCourse.id}`, { type: "full" }, { headers: { Authorization: `Bearer ${token}` } }); triggerToast("Enrollment Successful!"); setShowModal(false); setActiveTab("learning"); fetchData(); } catch (e) { triggerToast("Error enrolling in course", "error"); } finally { setProcessing(false); } };
   const handleLogout = () => { localStorage.clear(); navigate("/"); };
 
   const handleSubmitReview = async () => {
@@ -667,6 +689,7 @@ const StudentDashboard = () => {
           <NavItem icon={<Video size={16} />} label="Live Classes" active={activeTab === "meetings"} onClick={() => setActiveTab("meetings")} />
           <NavItem icon={<Award size={16} />} label="Certificates" active={activeTab === "certificates"} onClick={() => setActiveTab("certificates")} />
           <NavItem icon={<Compass size={16} />} label="Explore" active={activeTab === "explore"} onClick={() => setActiveTab("explore")} />
+          <NavItem icon={<Share2 size={16} />} label="ShareHub" active={false} onClick={() => navigate("/share-hub")} />
         </nav>
 
         {/* Right Actions */}
@@ -678,16 +701,20 @@ const StudentDashboard = () => {
 
           <div className="relative">
             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-3 pl-2 pr-4 py-1.5 bg-white border border-gray-200 rounded-full hover:shadow-md transition-all">
-              <div className="w-8 h-8 rounded-full bg-gray-100 text-black flex items-center justify-center font-bold text-xs">{userData.initials}</div>
-              <span className="text-sm font-bold hidden md:block">{userData.name}</span>
+              {userProfile.profile_pic ? (
+                <img src={userProfile.profile_pic} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-gray-200" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gray-100 text-black flex items-center justify-center font-bold text-xs">{userProfile.initials}</div>
+              )}
+              <span className="text-sm font-bold hidden md:block">{userProfile.name}</span>
             </button>
 
             <AnimatePresence>
               {showProfileMenu && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 top-14 w-64 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 z-50">
                   <div className="mb-4 border-b border-gray-100 pb-4 px-2">
-                    <p className="font-black text-black">{userData.name}</p>
-                    <p className="text-xs text-gray-500 font-medium truncate">{userData.email}</p>
+                    <p className="font-black text-black">{userProfile.name}</p>
+                    <p className="text-xs text-gray-500 font-medium truncate">{userProfile.email}</p>
                   </div>
                   <button onClick={() => { setActiveTab("settings"); setShowProfileMenu(false); }} className="flex items-center gap-3 w-full p-3 rounded-xl text-gray-600 hover:bg-gray-50 hover:text-black font-bold text-sm transition-colors mb-1"><Settings size={18} /> Account Settings</button>
                   <button onClick={handleLogout} className="flex items-center gap-3 w-full p-3 rounded-xl text-red-500 hover:bg-red-50 font-bold text-sm transition-colors"><LogOut size={18} /> Sign Out</button>
@@ -706,137 +733,107 @@ const StudentDashboard = () => {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="flex flex-col gap-6">
 
             <div className="mb-4">
-              <h1 className="text-3xl md:text-4xl font-black tracking-tight text-black">Forge Your Future, {userData.name}!</h1>
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight text-black">Forge Your Future, {userProfile.name}!</h1>
               <p className="text-gray-500 font-medium mt-2">Welcome back to your learning hub.</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 auto-rows-[minmax(180px,auto)]">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-6">
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] relative overflow-hidden group hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] transition-all">
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><BookOpen size={24} /></div>
+                    </div>
+                    <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Total Enrolled</h3>
+                    <h2 className="text-4xl font-black text-slate-900 tracking-tight relative z-10">{dashboardData?.stats?.totalEnrolled || 0}</h2>
+                </div>
 
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] relative overflow-hidden group hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] transition-all">
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><CheckCircle size={24} /></div>
+                    </div>
+                    <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Completed Lessons</h3>
+                    <h2 className="text-4xl font-black text-slate-900 tracking-tight relative z-10">{dashboardData?.stats?.completedLessons || 0}</h2>
+                </div>
+
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] relative overflow-hidden group hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] transition-all">
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><TrendingUp size={24} /></div>
+                        <span className="flex items-center gap-1 text-[11px] font-black text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">Global Avg</span>
+                    </div>
+                    <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Average Progress</h3>
+                    <div className="flex items-end gap-4 relative z-10">
+                        <h2 className="text-4xl font-black text-slate-900 tracking-tight">{dashboardData?.stats?.avgProgress || 0}%</h2>
+                        <div className="flex-1 h-2.5 bg-slate-100 rounded-full mb-2.5 overflow-hidden"><div className="h-full bg-slate-800 rounded-full transition-all duration-1000" style={{ width: `${dashboardData?.stats?.avgProgress || 0}%` }} /></div>
+                    </div>
+                </div>
+
+                <div className="bg-[#1e293b] p-6 md:p-8 rounded-[2rem] shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)] relative overflow-hidden flex flex-col justify-between border border-slate-800">
+                    <div className="absolute top-[-50%] right-[-20%] w-60 h-60 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none" />
+                    <div className="flex justify-between items-start mb-6 relative z-10">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center shadow-sm"><Users size={24} className="text-blue-400"/></div>
+                        <span className="flex items-center gap-1 text-[10px] font-black text-blue-400 bg-blue-400/10 border border-blue-400/20 px-3 py-1.5 rounded-full shadow-sm uppercase tracking-widest">Enrolled</span>
+                    </div>
+                    <div className="relative z-10">
+                        <h3 className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mb-1">Active Batches</h3>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-4xl font-black text-white tracking-tight">{dashboardData?.stats?.activeBatches || 0}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 auto-rows-[minmax(180px,auto)]">
               {/* BENTO 1: My Courses (Large) */}
-              <div className="md:col-span-2 lg:col-span-2 bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col">
+              <div className="lg:col-span-2 bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl border border-slate-200/80 rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex flex-col">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="font-black text-xl flex items-center gap-2"><BookOpen size={20} /> Active Courses</h3>
+                  <h3 className="font-black text-xl flex items-center gap-2"><BookOpen size={20} className="text-slate-500" /> Active Courses</h3>
                   <button onClick={() => setActiveTab("learning")} className="text-xs font-bold bg-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">View All</button>
                 </div>
 
                 <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide flex-1">
-                  {enrolledCourses.slice(0, 3).map((c, i) => (
-                    <div key={i} className="min-w-[160px] bg-gray-50 rounded-2xl p-4 border border-gray-100 flex flex-col justify-between group">
+                  {enrolledCourses.slice(0, 4).map((c, i) => (
+                    <div key={i} className="min-w-[160px] bg-white rounded-2xl p-4 border border-gray-100 flex flex-col justify-between group shadow-sm hover:shadow-md transition-shadow">
                       <div className="flex items-center justify-center mb-4">
-                        {/* Custom Circular Progress SVG */}
                         <div className="relative w-16 h-16 flex items-center justify-center">
                           <svg className="w-full h-full transform -rotate-90">
-                            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-200" />
-                            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="175" strokeDashoffset={175 - (175 * 75) / 100} className="text-black" />
+                            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-gray-100" />
+                            <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="175" strokeDashoffset={175 - (175 * (c.progress || 0)) / 100} className="text-black" />
                           </svg>
-                          <span className="absolute text-xs font-black">75%</span>
+                          <span className="absolute text-xs font-black">{c.progress || 0}%</span>
                         </div>
                       </div>
                       <div className="text-center">
-                        <h4 className="font-bold text-sm truncate mb-1">{c.title}</h4>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase bg-white px-2 py-0.5 rounded border border-gray-200">Intermediate</span>
+                        <h4 className="font-bold text-sm text-slate-800 truncate mb-1" title={c.title}>{c.title}</h4>
                       </div>
                       <button onClick={() => navigate(`/course/${c.id}/player`)} className="w-full mt-4 bg-black text-white text-xs font-bold py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">Resume</button>
                     </div>
                   ))}
                   {enrolledCourses.length === 0 && (
-                    <div className="w-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">
-                      <Compass size={32} className="mb-2" />
-                      <p className="text-sm font-bold">No active courses. Start exploring!</p>
+                    <div className="w-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl p-8">
+                      <Compass size={32} className="mb-2 text-slate-300" />
+                      <p className="text-sm font-bold text-slate-400">No active courses. Start exploring!</p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* BENTO 2: Performance Hub */}
-              <div className="md:col-span-1 lg:col-span-2 bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col md:flex-row gap-8">
-                <div className="flex-1 flex flex-col">
-                  <h3 className="font-black text-xl mb-4 flex items-center gap-2"><TrendingUp size={20} /> Performance Hub</h3>
-                  <div className="flex-1 bg-gray-50 rounded-xl border border-gray-100 p-4 relative overflow-hidden flex items-end">
-                    {/* Fake Graph SVG */}
-                    <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full absolute bottom-0 left-0 opacity-20">
-                      <path d="M0 40 L0 30 Q 20 10, 40 25 T 80 15 L 100 5 L 100 40 Z" fill="black" />
-                    </svg>
-                    <div className="relative z-10 w-full flex justify-between text-[10px] font-bold text-gray-400 border-t border-gray-200 pt-2">
-                      <span>Week 1</span><span>Week 2</span><span>Week 3</span><span>Week 4</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-3 justify-center md:w-48">
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-center justify-between">
-                    <div><p className="text-xs font-bold text-gray-500">Avg Solved</p><p className="text-xl font-black">68%</p></div>
-                    <CheckCircle size={24} className="text-green-500" />
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-center justify-between">
-                    <div><p className="text-xs font-bold text-gray-500">Skill Badges</p><p className="text-xl font-black">4</p></div>
-                    <Award size={24} className="text-black" />
-                  </div>
-                </div>
-              </div>
-
-              {/* BENTO 3: Code Arena Focus */}
-              <div className="md:col-span-1 lg:col-span-1 bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col">
-                <h3 className="font-black text-lg mb-2 flex items-center gap-2"><Code size={18} /> Code Arena Focus</h3>
-                <p className="text-xs text-gray-500 font-medium mb-4">Next available challenges</p>
-                <div className="space-y-3 flex-1 overflow-y-auto pr-2">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex items-center justify-between group">
+              {/* BENTO 2: Recommended Courses */}
+              <div className="lg:col-span-1 bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl border border-slate-200/80 rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex flex-col">
+                <h3 className="font-black text-xl mb-4 flex items-center gap-2"><Star size={20} className="text-yellow-500" /> Recommended For You</h3>
+                <div className="flex flex-col gap-4 flex-1">
+                  {dashboardData?.recommended_courses?.map((c: any, i: number) => (
+                    <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-blue-200 transition-colors cursor-pointer" onClick={() => navigate(`/course/${c.id}`)}>
                       <div>
-                        <h4 className="font-bold text-sm text-gray-800">Challenge {i}</h4>
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 mt-1">
-                          <span className="bg-white px-1.5 py-0.5 rounded border border-gray-200">Diff: {i * 2}</span>
-                          <span className="flex items-center gap-1"><Clock size={10} /> 15m</span>
-                        </div>
+                        <h4 className="font-bold text-sm text-slate-800">{c.title}</h4>
+                        <p className="text-xs font-medium text-slate-500 mt-1">by {c.instructor}</p>
                       </div>
-                      <button onClick={() => setActiveTab("test")} className="bg-black text-white px-3 py-1.5 rounded-lg text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity">Solve</button>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:text-blue-500" />
                     </div>
                   ))}
-                </div>
-              </div>
-
-              {/* BENTO 4: Campus Leaderboard */}
-              <div className="md:col-span-1 lg:col-span-1 bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col">
-                <h3 className="font-black text-lg mb-2 flex items-center gap-2"><Trophy size={18} /> Campus Rank</h3>
-                <p className="text-xs text-gray-500 font-medium mb-4">Global gamification standings</p>
-                <div className="space-y-4">
-                  {[
-                    { name: "Saram", score: 6560, me: false },
-                    { name: "Mattvn", score: 4380, me: false },
-                    { name: userData.name, score: 3100, me: true }
-                  ].map((s, i) => (
-                    <div key={i} className={`flex items-center justify-between p-2 rounded-lg ${s.me ? 'bg-gray-100 border border-gray-200' : ''}`}>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-black text-gray-400 w-4">{i + 1}</span>
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{s.name.charAt(0)}</div>
-                        <span className={`text-sm font-bold ${s.me ? 'text-black' : 'text-gray-600'}`}>{s.name}</span>
-                      </div>
-                      <span className="text-sm font-black">{s.score}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* BENTO 5: My Activity Hub */}
-              <div className="md:col-span-2 lg:col-span-2 bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col">
-                <h3 className="font-black text-xl mb-4 flex items-center gap-2"><Activity size={20} /> My Activity Hub</h3>
-                <div className="flex gap-4 mb-4 border-b border-gray-200 pb-2">
-                  <button onClick={() => setActivityTab("assignments")} className={`text-sm font-bold pb-2 border-b-2 transition-colors ${activityTab === "assignments" ? "border-black text-black" : "border-transparent text-gray-400 hover:text-black"}`}>Assignments</button>
-                  <button onClick={() => setActivityTab("quizzes")} className={`text-sm font-bold pb-2 border-b-2 transition-colors ${activityTab === "quizzes" ? "border-black text-black" : "border-transparent text-gray-400 hover:text-black"}`}>Quiz Results</button>
-                </div>
-                <div className="flex-1">
-                  {activityTab === "assignments" && (
-                    <table className="w-full text-left text-sm">
-                      <thead><tr className="text-gray-400 font-bold border-b border-gray-100"><th className="pb-2">Task</th><th className="pb-2">Status</th><th className="pb-2">Deadline</th></tr></thead>
-                      <tbody>
-                        <tr className="border-b border-gray-50"><td className="py-3 font-bold text-gray-800">DS Assignment 1</td><td><span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">Solved</span></td><td className="text-gray-500 font-medium">14 May 2026</td></tr>
-                        <tr><td className="py-3 font-bold text-gray-800">Algo Quiz 2</td><td><span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">Pending</span></td><td className="text-gray-500 font-medium">16 May 2026</td></tr>
-                      </tbody>
-                    </table>
+                  {(!dashboardData?.recommended_courses || dashboardData?.recommended_courses.length === 0) && (
+                    <p className="text-sm text-slate-400 font-medium">Keep exploring to get recommendations!</p>
                   )}
-                  {activityTab === "quizzes" && <p className="text-sm text-gray-500 py-4 font-medium">No recent quiz results to display.</p>}
                 </div>
               </div>
-
             </div>
           </motion.div>
         )}
@@ -879,18 +876,7 @@ const StudentDashboard = () => {
                           <div className="h-40 bg-gray-100 rounded-xl mb-6 overflow-hidden relative border border-gray-200">
                             {c.image_url ? <img src={c.image_url} alt={c.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><BookOpen size={40} /></div>}
 
-                            {/* PAYMENT INDICATOR */}
-                            <div className="absolute bottom-3 right-3 flex flex-col gap-2">
-                              {c.enrollment_type === 'trial' ? (
-                                <span className="bg-orange-500/90 backdrop-blur-md text-white border border-orange-400 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-1">
-                                  <Clock size={12} /> {c.days_left ?? 0} Days Trial
-                                </span>
-                              ) : (
-                                <span className="bg-emerald-500/90 backdrop-blur-md text-white border border-emerald-400 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-1">
-                                  <CheckCircle size={12} /> Paid
-                                </span>
-                              )}
-                            </div>
+
 
                             {/* FINALIZED INDICATOR */}
                             <div className="absolute bottom-3 left-3">
@@ -942,18 +928,7 @@ const StudentDashboard = () => {
                           <div className="h-40 bg-gray-100 rounded-xl mb-6 overflow-hidden relative border border-gray-200">
                             {c.image_url ? <img src={c.image_url} alt={c.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><Award size={40} /></div>}
 
-                            {/* PAYMENT INDICATOR */}
-                            <div className="absolute bottom-3 right-3 flex flex-col gap-2">
-                              {c.enrollment_type === 'trial' ? (
-                                <span className="bg-red-500/90 backdrop-blur-md text-white border border-red-400 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-1">
-                                  <Clock size={12} /> {c.days_left ?? 0} Days Trial
-                                </span>
-                              ) : (
-                                <span className="bg-blue-600/90 backdrop-blur-md text-white border border-blue-500 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest shadow-lg flex items-center gap-1">
-                                  <CheckCircle size={12} /> Paid
-                                </span>
-                              )}
-                            </div>
+
 
                             {/* FINALIZED INDICATOR */}
                             <div className="absolute bottom-3 left-3">
@@ -1172,55 +1147,190 @@ const StudentDashboard = () => {
         {/* TAB: EXPLORE COURSES */}
         {activeTab === "explore" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pb-20">
-            <h2 className="text-3xl font-black mb-8">Explore Catalog</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {availableCourses.map(c => (
-                <div key={c.id} className="bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-6 shadow-lg hover:shadow-xl transition-shadow flex flex-col h-full">
-                  <div className="h-40 bg-gray-100 rounded-xl mb-6 overflow-hidden border border-gray-200 flex items-center justify-center text-gray-300">
-                    {c.image_url ? <img src={c.image_url} alt={c.title} className="w-full h-full object-cover" /> : <BookOpen size={40} />}
+            <h2 className="text-3xl font-black mb-2">Explore Catalog</h2>
+            <p className="text-gray-500 font-medium mb-8">Browse courses available for your class.</p>
+            
+            {availableCourses.length === 0 ? (
+              <div className="w-full bg-white rounded-3xl p-12 text-center border border-gray-100 shadow-sm flex flex-col items-center justify-center">
+                <Compass size={64} className="text-gray-200 mb-4" />
+                <h3 className="text-xl font-black text-gray-800 mb-2">No Courses Available</h3>
+                <p className="text-gray-500 font-medium max-w-sm">
+                  There are currently no new published courses available for your class. Check back later or ask your instructor!
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {availableCourses.map(c => (
+                  <div key={c.id} className="bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-6 shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 flex flex-col h-full">
+                    <div className="h-40 bg-gray-100 rounded-xl mb-6 overflow-hidden border border-gray-200 flex items-center justify-center text-gray-300">
+                      {c.image_url ? <img src={c.image_url} alt={c.title} className="w-full h-full object-cover" /> : <BookOpen size={40} />}
+                    </div>
+                    <h3 className="text-xl font-black mb-2 leading-tight">{c.title}</h3>
+                    <p className="text-xs text-gray-500 font-medium line-clamp-2 mb-6 flex-1">{c.description || "Learn new skills and upgrade your knowledge."}</p>
+                    <div className="flex justify-between items-center mt-auto pt-4 border-t border-gray-100">
+                      <span className="text-xs font-black text-blue-500 uppercase bg-blue-50 px-2 py-1 rounded-md">Class Assigned</span>
+                      <button onClick={() => openEnrollModal(c)} className="bg-black text-white font-bold py-2.5 px-5 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors shadow-md active:scale-95 text-xs uppercase tracking-wider">
+                        <ShoppingBag size={14} /> Request Enroll
+                      </button>
+                    </div>
                   </div>
-                  <h3 className="text-xl font-black mb-2 leading-tight">{c.title}</h3>
-                  <div className="flex justify-between items-center mt-auto pt-4">
-                    <span className="text-2xl font-black">₹{c.price}</span>
-                    <button onClick={() => openEnrollModal(c)} className="bg-black text-white font-bold py-2 px-5 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-800 transition-colors">
-                      <ShoppingBag size={16} /> Enroll
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         )}
 
         {/* TAB: SETTINGS */}
         {activeTab === "settings" && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-2xl mx-auto pb-20">
-            <div className="bg-white/80 backdrop-blur-xl border border-white rounded-[2rem] p-10 shadow-lg">
-              <h2 className="text-2xl font-black mb-2">Account Settings</h2>
-              <p className="text-gray-500 font-medium mb-8">Manage your security and preferences.</p>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto pb-20">
+            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-200 overflow-hidden">
+              
+              {/* Header */}
+              <div className="px-8 py-8 border-b border-gray-100 bg-gray-50/50">
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Account Settings</h2>
+                <p className="text-slate-500 font-medium mt-1">Manage your public profile and security preferences.</p>
+              </div>
 
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  setSavingSettings(true);
-                  const token = localStorage.getItem("token");
-                  await axios.post(`${API_BASE_URL}/user/change-password`, { new_password: newPassword }, { headers: { Authorization: `Bearer ${token}` } });
-                  triggerToast("Password Updated Successfully!", "success");
-                  setNewPassword("");
-                } catch (err) {
-                  triggerToast("Failed to update password.", "error");
-                } finally {
-                  setSavingSettings(false);
-                }
-              }}>
-                <div className="mb-6">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">New Password</label>
-                  <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold focus:outline-none focus:border-black focus:ring-1 focus:ring-black transition-all" />
-                </div>
-                <button type="submit" disabled={savingSettings} className="w-full py-4 bg-black text-white rounded-xl font-bold shadow-lg hover:bg-gray-800 disabled:opacity-70 transition-colors">
-                  {savingSettings ? "Updating..." : "Update Password"}
-                </button>
-              </form>
+              <div className="p-8 md:p-10">
+                
+                {/* --- PROFILE SECTION --- */}
+                <section className="mb-12">
+                  <div className="mb-8">
+                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
+                      <User size={18} className="text-blue-500" /> Public Profile
+                    </h3>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      setSavingProfile(true);
+                      const token = localStorage.getItem("token");
+                      const res = await axios.put(`${API_BASE_URL}/profile`, {
+                        full_name: userProfile.name,
+                        profile_pic: userProfile.profile_pic,
+                        school_class_id: userProfile.school_class_id,
+                        section: userProfile.section
+                      }, { headers: { Authorization: `Bearer ${token}` } });
+                      setUserProfile({
+                        ...res.data,
+                        name: res.data.full_name,
+                        initials: res.data.full_name.substring(0, 2).toUpperCase()
+                      });
+                      triggerToast("Profile Updated Successfully!", "success");
+                    } catch (err) {
+                      triggerToast("Failed to update profile.", "error");
+                    } finally {
+                      setSavingProfile(false);
+                    }
+                  }}>
+                    
+                    {/* Avatar Upload */}
+                    <div className="flex items-center gap-6 mb-8 p-6 bg-slate-50/50 rounded-2xl border border-slate-100">
+                      {userProfile.profile_pic ? (
+                        <img src={userProfile.profile_pic} alt="Profile" className="w-20 h-20 rounded-full object-cover shadow-sm border-2 border-white" />
+                      ) : (
+                        <div className="w-20 h-20 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-black text-2xl shadow-sm border-2 border-white">{userProfile.initials}</div>
+                      )}
+                      <div className="flex flex-col gap-2 flex-1">
+                        <label className="text-sm font-bold text-slate-700">Profile Picture</label>
+                        <div className="flex flex-col md:flex-row gap-3">
+                          <label className="cursor-pointer bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-black px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-sm text-center">
+                            <span>Upload Image</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => setUserProfile({...userProfile, profile_pic: reader.result as string});
+                                reader.readAsDataURL(file);
+                              }
+                            }} />
+                          </label>
+                          <input type="text" value={userProfile.profile_pic || ""} onChange={(e) => setUserProfile({...userProfile, profile_pic: e.target.value})} placeholder="Or paste image URL..." className="flex-1 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-all font-medium" />
+                        </div>
+                        <p className="text-xs text-slate-400 font-medium">Recommended size: 256x256px. Max size: 2MB.</p>
+                      </div>
+                    </div>
+
+                    {/* Form Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
+                        <input type="text" value={userProfile.name} onChange={(e) => setUserProfile({...userProfile, name: e.target.value})} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-blue-500 transition-all text-slate-900" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email Address</label>
+                        <input type="email" value={userProfile.email} disabled className="w-full px-4 py-3 bg-slate-100/80 text-slate-400 border border-slate-200 rounded-xl font-bold cursor-not-allowed" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Class / Academic Year</label>
+                        <div className="relative">
+                          <select value={userProfile.school_class_id || ""} onChange={(e) => setUserProfile({...userProfile, school_class_id: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-blue-500 transition-all text-slate-900 appearance-none">
+                            <option value="">Select your class...</option>
+                            {classesList.map(c => <option key={c.id} value={c.id}>{c.name} ({c.academic_year})</option>)}
+                          </select>
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={16} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Section / Cohort</label>
+                        <input type="text" value={userProfile.section || ""} onChange={(e) => setUserProfile({...userProfile, section: e.target.value})} placeholder="e.g. Section A" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-blue-500 transition-all text-slate-900" />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button type="submit" disabled={savingProfile} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-70 flex items-center gap-2">
+                        {savingProfile ? "Saving..." : "Save Profile Changes"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+
+                <hr className="border-slate-100 my-10" />
+
+                {/* --- SECURITY SECTION --- */}
+                <section>
+                  <div className="mb-8">
+                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
+                      <Lock size={18} className="text-slate-600" /> Account Security
+                    </h3>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      setSavingSettings(true);
+                      const token = localStorage.getItem("token");
+                      await axios.put(`${API_BASE_URL}/profile/password`, { oldPassword, newPassword }, { headers: { Authorization: `Bearer ${token}` } });
+                      triggerToast("Password Updated Successfully!", "success");
+                      setOldPassword("");
+                      setNewPassword("");
+                    } catch (err: any) {
+                      triggerToast(err.response?.data?.error || "Failed to update password.", "error");
+                    } finally {
+                      setSavingSettings(false);
+                    }
+                  }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Current Password</label>
+                        <input type="password" required value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-slate-900 transition-all text-slate-900" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">New Password</label>
+                        <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:outline-none focus:bg-white focus:border-slate-900 transition-all text-slate-900" />
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-end">
+                      <button type="submit" disabled={savingSettings} className="bg-slate-900 hover:bg-black text-white px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-black/10 disabled:opacity-70 flex items-center gap-2">
+                        {savingSettings ? "Updating..." : "Update Password"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+
+              </div>
             </div>
           </motion.div>
         )}
@@ -1262,24 +1372,10 @@ const StudentDashboard = () => {
               <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"><X size={20} className="text-gray-600" /></button>
 
               <h2 className="text-3xl font-black mb-2 pr-10">{selectedCourse.title}</h2>
-              <p className="text-gray-500 font-medium mb-8">Unlock full lifetime access to this course.</p>
+              <p className="text-gray-500 font-medium mb-8">Submit a request to your staff to get access to this course.</p>
 
-              {/* Trial Banner */}
-              <div className="border border-green-200 bg-green-50 rounded-2xl p-6 relative mb-8">
-                <div className="absolute -top-3 right-6 bg-green-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-sm">Recommended</div>
-                <div className="flex items-center gap-3 mb-3 text-green-800"> <Clock size={20} /> <h3 className="text-lg font-black">7-Day Free Trial</h3> </div>
-                <p className="text-sm text-green-700 font-medium mb-6 leading-relaxed">Experience the full curriculum, interactive IDE, and auto-grading with zero commitment.</p>
-                <button onClick={handleTrialParams} disabled={processing} className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-600/20 transition-all disabled:opacity-70">
-                  {processing ? "Activating..." : "Start Free Trial"}
-                </button>
-              </div>
-
-              <div className="flex items-center gap-4 mb-8">
-                <div className="flex-1 h-px bg-gray-200"></div><span className="text-xs font-bold text-gray-400 uppercase tracking-widest">OR</span><div className="flex-1 h-px bg-gray-200"></div>
-              </div>
-
-              <button onClick={() => handlePayment(selectedCourse.id, selectedCourse.price)} className="w-full py-4 rounded-xl border-2 border-black font-black text-black flex items-center justify-center gap-2 hover:bg-black hover:text-white transition-all">
-                <CreditCard size={20} /> Buy Lifetime Access (₹{selectedCourse.price})
+              <button onClick={handleEnrollRequest} disabled={processing} className="w-full py-4 bg-black hover:bg-gray-800 text-white rounded-xl font-bold shadow-lg shadow-black/20 transition-all disabled:opacity-70 flex items-center justify-center gap-2">
+                {processing ? "Sending Request..." : "Send Enroll Request"}
               </button>
             </motion.div>
           </motion.div>

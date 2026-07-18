@@ -17,9 +17,13 @@ import Dashboard from "./Dashboard";
 import InstructorSettings from "./InstructorSettings";
 import StudentManagement from "./StudentManagement";
 import CourseList from "./CourseList";
+import InstructorBatches from "./InstructorBatches";
 import MeetingManager from "./MeetingManager";
-
-// CourseList is now imported from ./CourseList
+import AdminDashboardLayout from "./AdminDashboardLayout";
+import ClassManagement from "./ClassManagement";
+import StaffManagement from "./StaffManagement";
+import AdminOverview from "./AdminOverview";
+import ShareHub from "./ShareHub";
 
 import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
@@ -42,9 +46,19 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin-login" element={<AdminLogin />} />
 
+        {/* ADMIN ROUTES */}
+        <Route path="/admin-dashboard" element={<ProtectedRoute requiredRole="admin"><AdminDashboardLayout /></ProtectedRoute>}>
+          <Route index element={<AdminOverview />} />
+          <Route path="classes" element={<ClassManagement />} />
+          <Route path="students" element={<StudentManagement />} />
+          <Route path="staff" element={<StaffManagement />} />
+        </Route>
+
+        {/* INSTRUCTOR ROUTES */}
         <Route path="/dashboard" element={<ProtectedRoute requiredRole="instructor"><DashboardLayout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="courses" element={<CourseList />} />
+          <Route path="batches" element={<InstructorBatches />} />
           <Route path="create-course" element={<CreateCourse />} />
           <Route path="course/:courseId/builder" element={<CourseBuilder />} />
           <Route path="assignments" element={<AssignmentManager />} />
@@ -58,6 +72,7 @@ function App() {
 
         <Route path="/student-dashboard" element={<ProtectedRoute requiredRole="student"><StudentDashboard /></ProtectedRoute>} />
         <Route path="/course/:courseId/player" element={<ProtectedRoute requiredRole="student"><CoursePlayer /></ProtectedRoute>} />
+        <Route path="/share-hub" element={<ProtectedRoute requiredRole="student"><ShareHub /></ProtectedRoute>} />
       </Routes>
     </Router>
   );
@@ -67,7 +82,11 @@ const ProtectedRoute = ({ children, requiredRole }: { children: any, requiredRol
   const token = localStorage.getItem("token");
   const role = localStorage.getItem("role");
   if (!token) return <Navigate to="/login" replace />;
-  if (requiredRole && role !== requiredRole) { return role === "instructor" ? <Navigate to="/dashboard" /> : <Navigate to="/student-dashboard" />; }
+  if (requiredRole && role !== requiredRole) { 
+    if (role === "admin") return <Navigate to="/admin-dashboard" replace />;
+    if (role === "instructor") return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/student-dashboard" replace />; 
+  }
   return children;
 };
 

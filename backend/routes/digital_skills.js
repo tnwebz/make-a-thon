@@ -144,6 +144,7 @@ router.post('/:test_id/start', authMiddleware, async (req, res) => {
             problems: test.problems.map(p => ({ id: p.id, title: p.title, description: p.description, test_cases: p.test_cases }))
         });
     } catch (error) {
+        console.error("Error in /start:", error);
         res.status(500).json({ detail: "Internal Server Error" });
     }
 });

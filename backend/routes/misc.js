@@ -17,14 +17,14 @@ router.get('/my-courses', authMiddleware, async (req, res) => {
             where: { user_id: req.user.id },
             include: [{ 
                 model: Course, 
-                as: 'course',
-                include: ['modules'] 
+                as: 'course'
             }]
         });
 
         const response = [];
         for (const e of enrollments) {
             const course = e.course;
+            if (!course) continue;
             let total_lessons = 0;
             // Counting total lessons (simplified for brevity, should ideally query ContentItem directly)
             const all_lessons = await ContentItem.findAll({ 
@@ -67,8 +67,8 @@ router.get('/my-courses', authMiddleware, async (req, res) => {
         }
         res.json(response);
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ detail: "Internal Server Error" });
+        console.error("DEBUG_ERROR:", error);
+        res.status(500).json({ detail: error.message, stack: error.stack });
     }
 });
 
@@ -131,13 +131,15 @@ router.get('/student/dashboard', authMiddleware, async (req, res) => {
                 progress_percentage = Math.round((completed_lessons / total_lessons) * 100);
             }
             
-            enrolled_courses_with_progress.push({
-                id: e.course_id,
-                title: e.course.title,
-                category: "Technology",
-                progress: progress_percentage,
-                instructor: e.course.instructor ? e.course.instructor.full_name : "Unknown"
-            });
+            if (e.course) {
+                enrolled_courses_with_progress.push({
+                    id: e.course_id,
+                    title: e.course.title,
+                    category: "Technology",
+                    progress: progress_percentage,
+                    instructor: e.course.instructor ? e.course.instructor.full_name : "Unknown"
+                });
+            }
         }
 
         const all_courses = await Course.findAll({ limit: 2, include: ['instructor'] });
@@ -152,12 +154,30 @@ router.get('/student/dashboard', authMiddleware, async (req, res) => {
             { id: 4, name: "Kavyanjali", points: 1100 },
         ];
 
-        res.json({
-            user_name: req.user.full_name,
-            enrolled_courses: enrolled_courses_with_progress,
-            recommended_courses: recommended,
-            leaderboard: leaderboard
-        });
+            let totalProgress = 0;
+            if (enrolled_courses_with_progress.length > 0) {
+                totalProgress = enrolled_courses_with_progress.reduce((sum, c) => sum + c.progress, 0);
+            }
+            const avgProgress = enrolled_courses_with_progress.length > 0 
+                ? Math.round(totalProgress / enrolled_courses_with_progress.length) 
+                : 0;
+
+            const activeBatches = new Set(enrollments.map(e => e.batch_id)).size;
+
+            const stats = {
+                totalEnrolled: enrolled_courses_with_progress.length,
+                completedLessons: completed_lesson_ids.size,
+                avgProgress: avgProgress,
+                activeBatches: activeBatches
+            };
+
+            res.json({
+                user_name: req.user.full_name,
+                enrolled_courses: enrolled_courses_with_progress,
+                recommended_courses: recommended,
+                leaderboard: leaderboard,
+                stats: stats
+            });
     } catch (error) {
         console.error(error);
         res.status(500).json({ detail: "Internal Server Error" });
@@ -311,6 +331,80 @@ router.get('/instructor/reviews', authMiddleware, async (req, res) => {
         res.json(formatted);
     } catch (error) {
         console.error("Get instructor reviews error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+// Instructor Analytics Overview
+router.get('/instructor/overview-analytics', authMiddleware, async (req, res) => {
+    try {
+        if (req.user.role !== "instructor") {
+            return res.status(403).json({ detail: "Only instructors can retrieve analytics." });
+        }
+        
+        const courses = await Course.findAll({
+            where: { instructor_id: req.user.id }
+        });
+        const courseIds = courses.map(c => c.id);
+        
+        const enrollments = await Enrollment.findAll({
+            where: { course_id: { [Op.in]: courseIds } }
+        });
+        
+        const uniqueStudents = new Set(enrollments.map(e => e.user_id));
+        const totalStudents = uniqueStudents.size;
+        
+        const batches = await require('../models').CourseBatch.count({
+            where: { course_id: { [Op.in]: courseIds } }
+        });
+        
+        let totalProgressSum = 0;
+        let totalEnrollmentsWithProgress = 0;
+        const courseData = [];
+        
+        for (const course of courses) {
+            const courseEnrollments = enrollments.filter(e => e.course_id === course.id);
+            const numStudents = courseEnrollments.length;
+            
+            const all_lessons = await ContentItem.findAll({ 
+                include: [{ model: require('../models').Module, where: { course_id: course.id } }]
+            });
+            const total_lessons = all_lessons.length;
+            
+            let avgCourseProgress = 0;
+            
+            if (total_lessons > 0 && numStudents > 0) {
+                const completed = await LessonProgress.count({
+                    where: { 
+                        content_item_id: { [Op.in]: all_lessons.map(l => l.id) }
+                    }
+                });
+                avgCourseProgress = Math.floor((completed / (numStudents * total_lessons)) * 100);
+                if (avgCourseProgress > 100) avgCourseProgress = 100;
+                
+                totalProgressSum += avgCourseProgress;
+                totalEnrollmentsWithProgress += 1;
+            }
+            
+            courseData.push({
+                name: course.title,
+                students: numStudents,
+                progress: avgCourseProgress
+            });
+        }
+        
+        const globalCompletionRate = totalEnrollmentsWithProgress > 0 ? Math.floor(totalProgressSum / totalEnrollmentsWithProgress) : 0;
+        
+        res.json({
+            totalCourses: courses.length,
+            activeStudents: totalStudents,
+            activeBatches: batches,
+            globalCompletionRate: globalCompletionRate,
+            courseData: courseData
+        });
+
+    } catch (error) {
+        console.error("Analytics error:", error);
         res.status(500).json({ detail: "Internal Server Error" });
     }
 });
