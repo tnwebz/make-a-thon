@@ -9,7 +9,7 @@ import {
   Wifi, WifiOff, Loader2, X, Film, HardDrive, CheckCircle2
 } from "lucide-react";
 
-const API = "http://127.0.0.1:8000";
+const API = `http://${window.location.hostname}:8000`;
 
 // IndexedDB helper
 const getDB = async (): Promise<IDBPDatabase> => {
