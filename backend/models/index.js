@@ -134,8 +134,8 @@ const CourseReview = sequelize.define('CourseReview', {
 SchoolClass.hasMany(User, { foreignKey: 'school_class_id', as: 'students' });
 User.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
 
-User.hasMany(Course, { foreignKey: 'instructor_id' });
-Course.belongsTo(User, { foreignKey: 'instructor_id' });
+User.hasMany(Course, { foreignKey: 'instructor_id', as: 'instructorCourses' });
+Course.belongsTo(User, { foreignKey: 'instructor_id', as: 'instructor' });
 
 Course.hasMany(Module, { foreignKey: 'course_id' });
 Module.belongsTo(Course, { foreignKey: 'course_id' });

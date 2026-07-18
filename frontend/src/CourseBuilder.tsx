@@ -395,7 +395,7 @@ const CourseBuilder = () => {
     { name: "Curriculum", icon: <Layout size={18} /> },
     { name: "Batches", icon: <Users size={18} /> },
     { name: "Analytics", icon: <BarChart size={18} /> },
-    { name: "Pricing", icon: <Zap size={18} /> },
+
     { name: "Settings", icon: <Edit3 size={18} /> },
   ];
 
@@ -749,45 +749,7 @@ const CourseBuilder = () => {
                 </div>
               </div>
             </div>
-          ) : activeTab === "Pricing" ? (
-            <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-2xl">
-              <h2 className="text-4xl font-black tracking-tight mb-2">Monetization</h2>
-              <p className="text-slate-500 text-lg mb-8">Control access tiers and exact pricing models.</p>
 
-              <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col gap-8">
-                <div className="flex gap-4 p-1.5 bg-slate-100 rounded-[1.25rem]">
-                  <button
-                    onClick={() => { setPriceType("Free"); setPriceAmount("0"); }}
-                    className={`flex-1 py-4 rounded-xl font-extrabold transition-all text-lg ${priceType === "Free" ? "bg-white text-emerald-600 shadow-md scale-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/50"}`}
-                  >
-                    Free Tier
-                  </button>
-                  <button
-                    onClick={() => { setPriceType("Paid"); setPriceAmount("99"); }}
-                    className={`flex-1 py-4 rounded-xl font-extrabold transition-all text-lg ${priceType === "Paid" ? "bg-white text-blue-600 shadow-md scale-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/50"}`}
-                  >
-                    Premium
-                  </button>
-                </div>
-
-                {priceType === "Paid" && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="flex flex-col gap-3">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Base Enrollment Price (USD)</label>
-                    <div className="relative">
-                      <span className="absolute left-6 top-1/2 transform -translate-y-1/2 text-slate-400 font-black text-xl">₹</span>
-                      <input
-                        type="number" value={priceAmount} onChange={e => setPriceAmount(e.target.value)}
-                        className="w-full text-2xl p-6 pl-14 rounded-2xl border-2 border-slate-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-black text-slate-900 transition-all"
-                      />
-                    </div>
-                  </motion.div>
-                )}
-
-                <button onClick={handleSaveSettings} disabled={isSavingSettings} className="w-full mt-2 py-5 bg-slate-900 text-white font-extrabold text-lg rounded-2xl hover:bg-slate-800 transition-colors flex items-center justify-center gap-3 shadow-xl shadow-slate-900/10">
-                  {isSavingSettings ? "Syncing..." : <><Save size={20} /> Publish Pricing Model</>}
-                </button>
-              </div>
-            </div>
           ) : activeTab === "Communications" ? (
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-2xl px-2">
               <h2 className="text-4xl font-black tracking-tight mb-2">Communications</h2>

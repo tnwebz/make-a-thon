@@ -29,22 +29,33 @@ const Dashboard = () => {
   const [generatedLink, setGeneratedLink] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // --- ROBUST MOCK DATA ENGINE ---
-  const stats = { revenue: 284500, revGrowth: 15.2, students: 3450, stuGrowth: 12.4, courses: 24, completionRate: 82, pendingAlerts: 3 };
-  
-  const revenueData = [ 
-    { name: 'Mon', revenue: 24200 }, { name: 'Tue', revenue: 25800 }, { name: 'Wed', revenue: 24900 }, 
-    { name: 'Thu', revenue: 28500 }, { name: 'Fri', revenue: 27200 }, { name: 'Sat', revenue: 30400 }, { name: 'Sun', revenue: 29800 } 
-  ];
+  const [analytics, setAnalytics] = useState({
+      totalCourses: 0,
+      activeStudents: 0,
+      activeBatches: 0,
+      globalCompletionRate: 0,
+      courseData: []
+  });
 
-  const engagementData = [
-    { name: 'W1', active: 800, dropoff: 40 }, { name: 'W2', active: 1150, dropoff: 55 },
-    { name: 'W3', active: 1450, dropoff: 60 }, { name: 'W4', active: 2200, dropoff: 80 }
-  ];
+  useEffect(() => {
+      const fetchAnalytics = async () => {
+          try {
+              const token = localStorage.getItem("token");
+              const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
+              const res = await axios.get(`${API_BASE_URL}/instructor/overview-analytics`, {
+                  headers: { Authorization: `Bearer ${token}` }
+              });
+              setAnalytics(res.data);
+          } catch(err) {
+              console.error(err);
+          }
+      };
+      fetchAnalytics();
+  }, []);
 
   const instructorCourses = [
     { 
-        id: 1, title: 'Advanced Python Architecture', totalStudents: 428, rating: 4.9, revenue: 124000,
+        id: 1, title: 'Advanced Python Architecture', totalStudents: 428, rating: 4.9, progress: 85,
         students: [
             { id: 101, name: 'Rahul Sharma', progress: 100, lastActive: '2 hours ago' },
             { id: 102, name: 'Priya Patel', progress: 65, lastActive: '1 day ago' },
@@ -52,14 +63,14 @@ const Dashboard = () => {
         ]
     },
     { 
-        id: 2, title: 'React JS Enterprise Apps', totalStudents: 385, rating: 4.8, revenue: 98000,
+        id: 2, title: 'React JS Enterprise Apps', totalStudents: 385, rating: 4.8, progress: 62,
         students: [
             { id: 201, name: 'Neha Gupta', progress: 85, lastActive: 'Just now' },
             { id: 202, name: 'Vikram Singh', progress: 10, lastActive: '1 week ago' }
         ]
     },
     { 
-        id: 3, title: 'Java SpringBoot Microservices', totalStudents: 240, rating: 4.7, revenue: 62500,
+        id: 3, title: 'Java SpringBoot Microservices', totalStudents: 240, rating: 4.7, progress: 95,
         students: [
             { id: 301, name: 'Sanjay Das', progress: 100, lastActive: '5 hours ago' }
         ]
@@ -189,47 +200,47 @@ const Dashboard = () => {
             
             {/* 📊 ROW 1: KPI METRICS GRID */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                <div className="bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] relative overflow-hidden group hover:shadow-lg transition-all">
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] relative overflow-hidden group hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] transition-all">
                     <div className="flex justify-between items-start mb-6 relative z-10">
-                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><IndianRupee size={24} /></div>
-                        <span className="flex items-center gap-1 text-[11px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full shadow-sm"><ArrowUpRight size={14} strokeWidth={3} /> {stats.revGrowth}%</span>
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><BookOpen size={24} /></div>
+                        <span className="flex items-center gap-1 text-[11px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full shadow-sm"><ArrowUpRight size={14} strokeWidth={3} /> Active</span>
                     </div>
-                    <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Total Revenue</h3>
-                    <h2 className="text-4xl font-black text-slate-900 tracking-tight relative z-10">₹{stats.revenue.toLocaleString()}</h2>
+                    <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Total Courses</h3>
+                    <h2 className="text-4xl font-black text-slate-900 tracking-tight relative z-10">{analytics.totalCourses}</h2>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] relative overflow-hidden group hover:shadow-lg transition-all">
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] relative overflow-hidden group hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] transition-all">
                     <div className="flex justify-between items-start mb-6 relative z-10">
                         <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><Users size={24} /></div>
-                        <span className="flex items-center gap-1 text-[11px] font-black text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full shadow-sm"><ArrowUpRight size={14} strokeWidth={3} /> {stats.stuGrowth}%</span>
+                        <span className="flex items-center gap-1 text-[11px] font-black text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-full shadow-sm"><ArrowUpRight size={14} strokeWidth={3} /> Live</span>
                     </div>
                     <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Active Students</h3>
-                    <h2 className="text-4xl font-black text-slate-900 tracking-tight relative z-10">{stats.students.toLocaleString()}</h2>
+                    <h2 className="text-4xl font-black text-slate-900 tracking-tight relative z-10">{analytics.activeStudents.toLocaleString()}</h2>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] relative overflow-hidden group hover:shadow-lg transition-all">
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] relative overflow-hidden group hover:shadow-[0_15px_40px_rgba(0,0,0,0.12)] transition-all">
                     <div className="flex justify-between items-start mb-6 relative z-10">
                         <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shadow-sm"><Target size={24} /></div>
                         <span className="flex items-center gap-1 text-[11px] font-black text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">Global Avg</span>
                     </div>
                     <h3 className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1 relative z-10">Completion Rate</h3>
                     <div className="flex items-end gap-4 relative z-10">
-                        <h2 className="text-4xl font-black text-slate-900 tracking-tight">{stats.completionRate}%</h2>
-                        <div className="flex-1 h-2.5 bg-slate-100 rounded-full mb-2.5 overflow-hidden"><div className="h-full bg-slate-800 rounded-full transition-all duration-1000" style={{ width: `${stats.completionRate}%` }} /></div>
+                        <h2 className="text-4xl font-black text-slate-900 tracking-tight">{analytics.globalCompletionRate}%</h2>
+                        <div className="flex-1 h-2.5 bg-slate-100 rounded-full mb-2.5 overflow-hidden"><div className="h-full bg-slate-800 rounded-full transition-all duration-1000" style={{ width: `${analytics.globalCompletionRate}%` }} /></div>
                     </div>
                 </div>
 
                 <div className="bg-[#1e293b] p-6 md:p-8 rounded-[2rem] shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)] relative overflow-hidden flex flex-col justify-between border border-slate-800">
-                    <div className="absolute top-[-50%] right-[-20%] w-60 h-60 bg-red-500/10 rounded-full blur-[40px] pointer-events-none" />
+                    <div className="absolute top-[-50%] right-[-20%] w-60 h-60 bg-blue-500/10 rounded-full blur-[40px] pointer-events-none" />
                     <div className="flex justify-between items-start mb-6 relative z-10">
-                        <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center shadow-sm"><ShieldAlert size={24} className="text-red-400"/></div>
-                        <span className="flex items-center gap-1 text-[10px] font-black text-red-400 bg-red-400/10 border border-red-400/20 px-3 py-1.5 rounded-full shadow-sm uppercase tracking-widest">Action Required</span>
+                        <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center shadow-sm"><Users size={24} className="text-blue-400"/></div>
+                        <span className="flex items-center gap-1 text-[10px] font-black text-blue-400 bg-blue-400/10 border border-blue-400/20 px-3 py-1.5 rounded-full shadow-sm uppercase tracking-widest">Managing</span>
                     </div>
                     <div className="relative z-10">
-                        <h3 className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mb-1">Proctoring Alerts</h3>
+                        <h3 className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mb-1">Active Batches</h3>
                         <div className="flex items-center justify-between">
-                            <h2 className="text-4xl font-black text-white tracking-tight">{stats.pendingAlerts}</h2>
-                            <button onClick={() => navigate("/dashboard/code-arena")} className="text-[10px] font-black text-white hover:text-red-300 transition-colors uppercase tracking-widest flex items-center gap-1">Review <ChevronRight size={14}/></button>
+                            <h2 className="text-4xl font-black text-white tracking-tight">{analytics.activeBatches}</h2>
+                            <button onClick={() => navigate("/dashboard/batches")} className="text-[10px] font-black text-white hover:text-blue-300 transition-colors uppercase tracking-widest flex items-center gap-1">Manage <ChevronRight size={14}/></button>
                         </div>
                     </div>
                 </div>
@@ -238,57 +249,49 @@ const Dashboard = () => {
             {/* 📈 ROW 2: DATA VISUALIZATIONS */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 
-                {/* Revenue Analytics Chart */}
-                <div className="bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] flex flex-col h-[480px]">
+                {/* Course Enrollments Chart */}
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex flex-col h-[480px]">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                         <div>
-                            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2"><Activity size={20} className="text-slate-400"/> Revenue Flow</h2>
-                            <p className="text-xs font-bold text-slate-500 mt-1">Financial performance timeline</p>
-                        </div>
-                        <div className="flex bg-slate-100 p-1 rounded-xl w-fit border border-slate-200/50">
-                            {["7D", "30D", "1Y"].map(filter => (
-                                <button key={filter} onClick={() => setTimeFilter(filter)} className={`px-5 py-2 rounded-lg text-xs font-black transition-all ${timeFilter === filter ? 'bg-white text-black shadow-sm border border-slate-200/50' : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'}`}>
-                                    {filter}
-                                </button>
-                            ))}
+                            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2"><Users size={20} className="text-slate-400"/> Course Enrollments</h2>
+                            <p className="text-xs font-bold text-slate-500 mt-1">Student distribution across courses</p>
                         </div>
                     </div>
                     
                     <div className="flex-1 w-full relative">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={revenueData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#0f172a" stopOpacity={0.10}/>
-                                        <stop offset="95%" stopColor="#0f172a" stopOpacity={0}/>
-                                    </linearGradient>
-                                </defs>
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dx={-10} tickFormatter={(v) => `${v/1000}k`} />
-                                <Tooltip cursor={{stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '4 4'}} contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.1)', background: '#fff', fontWeight: 800 }} />
-                                <Area type="monotone" dataKey="revenue" stroke="#1e293b" strokeWidth={3} fill="url(#colorRev)" activeDot={{ r: 6, fill: '#0f172a', stroke: '#fff', strokeWidth: 2 }} />
-                            </AreaChart>
+                            <BarChart data={analytics.courseData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dy={10} tickFormatter={(val) => val.length > 10 ? val.substring(0, 10) + '...' : val} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dx={-10} />
+                                <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.1)', background: '#fff', fontWeight: 800 }} />
+                                <Bar dataKey="students" fill="#1e293b" radius={[6, 6, 0, 0]} barSize={32} />
+                            </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
 
-                {/* Engagement Bar Chart */}
-                <div className="bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] flex flex-col h-[480px]">
+                {/* Course Progress Chart */}
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex flex-col h-[480px]">
                     <div className="flex justify-between items-center mb-8">
                         <div>
-                            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2"><BarChart3 size={20} className="text-slate-400"/> Student Engagement</h2>
-                            <p className="text-xs font-bold text-slate-500 mt-1">Active vs Drop-offs comparison</p>
+                            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2"><BarChart3 size={20} className="text-slate-400"/> Course Progress Tracker</h2>
+                            <p className="text-xs font-bold text-slate-500 mt-1">Average completion rate per course</p>
                         </div>
                     </div>
                     <div className="flex-1 w-full relative">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={engagementData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dx={-10} />
-                                <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.1)', background: '#fff', fontWeight: 800 }} />
-                                <Bar dataKey="active" fill="#1e293b" radius={[6, 6, 0, 0]} barSize={24} />
-                                <Bar dataKey="dropoff" fill="#94a3b8" radius={[6, 6, 0, 0]} barSize={24} />
-                            </BarChart>
+                            <AreaChart data={analytics.courseData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="colorProg" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.20}/>
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dy={10} tickFormatter={(val) => val.length > 10 ? val.substring(0, 10) + '...' : val} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11, fontWeight: 800 }} dx={-10} tickFormatter={(v) => `${v}%`} />
+                                <Tooltip cursor={{stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '4 4'}} contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.1)', background: '#fff', fontWeight: 800 }} />
+                                <Area type="monotone" dataKey="progress" stroke="#10b981" strokeWidth={3} fill="url(#colorProg)" activeDot={{ r: 6, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }} />
+                            </AreaChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
@@ -298,7 +301,7 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 
                 {/* Expandable Course Directory (Takes 2/3) */}
-                <div className="bg-white/70 backdrop-blur-xl xl:col-span-2 p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl xl:col-span-2 p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
                     <div className="flex items-center justify-between mb-8">
                         <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2"><BookOpen size={20} className="text-slate-400"/> Course Directories & Rosters</h2>
                     </div>
@@ -320,8 +323,8 @@ const Dashboard = () => {
                                     </div>
                                     <div className="flex items-center gap-6 justify-between md:justify-end border-t border-slate-100 md:border-none pt-4 md:pt-0">
                                         <div className="text-left md:text-right">
-                                            <h4 className="font-black text-lg text-slate-900">₹{course.revenue.toLocaleString()}</h4>
-                                            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Gross Revenue</span>
+                                            <h4 className="font-black text-lg text-slate-900">{course.progress}%</h4>
+                                            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Avg Progress</span>
                                         </div>
                                         <div className={`p-2.5 rounded-full border border-slate-200 transition-transform ${expandedCourseId === course.id ? 'rotate-180 bg-slate-100' : 'bg-white shadow-sm'}`}>
                                             <ChevronDown size={18} className="text-slate-600"/>
@@ -367,7 +370,7 @@ const Dashboard = () => {
                 </div>
 
                 {/* Feedback Panel (Takes 1/3) */}
-                <div className="bg-white/70 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] flex flex-col h-[600px] xl:h-auto">
+                <div className="bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-slate-200/80 shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex flex-col h-[600px] xl:h-auto">
                     <div className="flex items-center justify-between mb-8">
                         <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2"><MessageSquare size={20} className="text-slate-400"/> Student Feedback</h2>
                     </div>
