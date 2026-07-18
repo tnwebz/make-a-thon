@@ -253,8 +253,8 @@ const CoursePlayer = () => {
     }
   };
 
-  const getEmbedUrl = (url: string) => url ? (url.includes("docs.google.com/forms") ? url.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true") : url.replace("/view", "/preview")) : "";
-  const getYoutubeId = (url: string) => { const match = url?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; };
+  const getEmbedUrl = (content: string) => content ? (content.includes("docs.google.com/forms") ? content.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true") : content.replace("/view", "/preview")) : "";
+  const getYoutubeId = (content: string) => { const match = content?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; };
 
   const renderContent = () => {
     if (!activeLesson) return <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase">Select a lesson to begin</div>;
@@ -281,21 +281,29 @@ const CoursePlayer = () => {
 
           {activeLesson.type === "note" && (
             <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
-              <iframe 
-                src={getEmbedUrl(activeLesson.url)} 
-                className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
-                onLoad={() => setContentLoading(false)}
-              />
+              {activeLesson.content ? (
+                <iframe 
+                  src={getEmbedUrl(activeLesson.content)} 
+                  className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
+                  onLoad={() => setContentLoading(false)}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem]">No notes uploaded</div>
+              )}
             </div>
           )}
 
           {activeLesson.type === "quiz" && (
             <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
-              <iframe 
-                src={getEmbedUrl(activeLesson.url)} 
-                className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
-                onLoad={() => setContentLoading(false)}
-              />
+              {activeLesson.content ? (
+                <iframe 
+                  src={getEmbedUrl(activeLesson.content)} 
+                  className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
+                  onLoad={() => setContentLoading(false)}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem]">No quiz uploaded</div>
+              )}
             </div>
           )}
 
@@ -315,13 +323,32 @@ const CoursePlayer = () => {
                   .plyr__control--overlaid:hover { background: rgba(255,255,255,0.2) !important; }
                 `}</style>
 
-                {getYoutubeId(activeLesson.url) ? (
+                {getYoutubeId(activeLesson.content) ? (
                   <Plyr
                     source={{
                       type: "video",
-                      sources: [{ src: getYoutubeId(activeLesson.url) || "", provider: "youtube" }]
+                      sources: [{ src: getYoutubeId(activeLesson.content)!, provider: "youtube" }]
                     }}
                     options={plyrOptions}
+                  />
+                ) : activeLesson.content && (activeLesson.content.endsWith(".mp4") || activeLesson.content.endsWith(".webm") || activeLesson.content.endsWith(".ogg")) ? (
+                  <Plyr
+                    source={{
+                      type: "video",
+                      sources: [{ src: activeLesson.content, provider: "html5" }]
+                    }}
+                    options={{
+                      controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
+                      autoplay: true,
+                      keyboard: { focused: true, global: true }
+                    }}
+                  />
+                ) : activeLesson.content ? (
+                  <iframe 
+                    src={getEmbedUrl(activeLesson.content)} 
+                    className="w-full h-full rounded-[1.5rem] border-0 bg-black" 
+                    allowFullScreen
+                    onLoad={() => setContentLoading(false)}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase">Invalid Video Source</div>

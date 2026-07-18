@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-react";
@@ -6,8 +6,22 @@ import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-
 const CreateCourse = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ title: "", description: "", price: "", image_url: "", duration: "" });
+  const [formData, setFormData] = useState({ title: "", description: "", price: "", image_url: "", duration: "", school_class_id: "none" });
   const [isFree, setIsFree] = useState(false);
+  const [classes, setClasses] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await axios.get("http://127.0.0.1:8000/api/v1/admin/classes", { headers: { Authorization: `Bearer ${token}` } });
+        setClasses(res.data);
+      } catch (err) {
+        console.error("Failed to load classes", err);
+      }
+    };
+    fetchClasses();
+  }, []);
 
   // 🎨 PROFESSIONAL THEME
   const brand = {
@@ -24,7 +38,7 @@ const CreateCourse = () => {
     try {
       const token = localStorage.getItem("token");
       const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
-      const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url }, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.post("http://127.0.0.1:8000/api/v1/courses", { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url, school_class_id: formData.school_class_id }, { headers: { Authorization: `Bearer ${token}` } });
       alert("Course Created Successfully! 🎉 Let's add some content.");
       navigate(`/dashboard/course/${response.data.id}/builder`);
     } catch (error: any) { console.error(error); alert("Failed to create course."); } finally { setLoading(false); }
@@ -56,6 +70,15 @@ const CreateCourse = () => {
           <div>
             <label style={labelStyle}>Description</label>
             <textarea rows={4} placeholder="Describe what your students will achieve..." value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} required style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Target School Class (Optional)</label>
+            <select value={formData.school_class_id} onChange={(e) => setFormData({...formData, school_class_id: e.target.value})} style={inputStyle}>
+              <option value="none">-- Not Tied to a Specific Class --</option>
+              {classes.map(c => <option key={c.id} value={c.id}>{c.name} ({c.academic_year})</option>)}
+            </select>
+            <p style={{ fontSize: "12px", color: "#64748b", marginTop: "4px" }}>Select a class if you want to deliver this course to specific sections (batches).</p>
           </div>
 
           <div>

@@ -1,10 +1,31 @@
+require('dotenv').config();
 const { Sequelize, DataTypes } = require('sequelize');
+const { URL } = require('url');
 
-const sequelize = new Sequelize('skillforge_db', 'postgres', '0728', {
-    host: 'localhost',
-    dialect: 'postgres',
-    logging: false
-});
+let sequelize;
+
+if (process.env.DATABASE_URL) {
+    let databaseUrl = process.env.DATABASE_URL;
+    try {
+        const parsedUrl = new URL(databaseUrl);
+        if (!parsedUrl.pathname || parsedUrl.pathname === '/') {
+            parsedUrl.pathname = '/skillforge_db';
+            databaseUrl = parsedUrl.toString();
+        }
+    } catch (e) {
+        console.error('Error parsing DATABASE_URL:', e);
+    }
+    sequelize = new Sequelize(databaseUrl, {
+        dialect: 'postgres',
+        logging: false
+    });
+} else {
+    sequelize = new Sequelize('skillforge_db', 'postgres', '0728', {
+        host: 'localhost',
+        dialect: 'postgres',
+        logging: false
+    });
+}
 
 const User = sequelize.define('User', {
     email: { type: DataTypes.STRING, unique: true },
@@ -17,7 +38,14 @@ const User = sequelize.define('User', {
     zoom_account_id: { type: DataTypes.STRING, allowNull: true },
     zoom_client_id: { type: DataTypes.STRING, allowNull: true },
     zoom_client_secret: { type: DataTypes.STRING, allowNull: true },
+    school_class_id: { type: DataTypes.INTEGER, allowNull: true },
+    section: { type: DataTypes.STRING, allowNull: true },
 }, { timestamps: true, tableName: 'users' });
+
+const SchoolClass = sequelize.define('SchoolClass', {
+    name: { type: DataTypes.STRING, allowNull: false },
+    academic_year: { type: DataTypes.STRING, allowNull: false },
+}, { timestamps: true, tableName: 'school_classes' });
 
 const Course = sequelize.define('Course', {
     title: { type: DataTypes.STRING },
@@ -26,7 +54,13 @@ const Course = sequelize.define('Course', {
     image_url: { type: DataTypes.STRING, allowNull: true },
     is_published: { type: DataTypes.BOOLEAN, defaultValue: false },
     is_finalized: { type: DataTypes.BOOLEAN, defaultValue: false },
+    school_class_id: { type: DataTypes.INTEGER, allowNull: true },
 }, { timestamps: false, tableName: 'courses' });
+
+const CourseBatch = sequelize.define('CourseBatch', {
+    name: { type: DataTypes.STRING, allowNull: false },
+    section: { type: DataTypes.STRING, allowNull: false },
+}, { timestamps: true, tableName: 'course_batches' });
 
 const Module = sequelize.define('Module', {
     title: { type: DataTypes.STRING },
@@ -48,6 +82,7 @@ const Enrollment = sequelize.define('Enrollment', {
     enrollment_type: { type: DataTypes.STRING, defaultValue: "paid" },
     expiry_date: { type: DataTypes.DATE, allowNull: true },
     enrolled_at: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
+    batch_id: { type: DataTypes.INTEGER, allowNull: true },
 }, { timestamps: false, tableName: 'enrollments' });
 
 const Submission = sequelize.define('Submission', {
@@ -96,6 +131,9 @@ const CourseReview = sequelize.define('CourseReview', {
 }, { timestamps: true, tableName: 'course_reviews' });
 
 // Setup Relationships
+SchoolClass.hasMany(User, { foreignKey: 'school_class_id', as: 'students' });
+User.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
+
 User.hasMany(Course, { foreignKey: 'instructor_id' });
 Course.belongsTo(User, { foreignKey: 'instructor_id' });
 
@@ -109,6 +147,16 @@ User.hasMany(Enrollment, { foreignKey: 'user_id', as: 'enrollments' });
 Enrollment.belongsTo(User, { foreignKey: 'user_id', as: 'student' });
 Course.hasMany(Enrollment, { foreignKey: 'course_id', as: 'enrollments' });
 Enrollment.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
+
+// CourseBatch Relationships
+Course.hasMany(CourseBatch, { foreignKey: 'course_id', as: 'batches' });
+CourseBatch.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
+SchoolClass.hasMany(CourseBatch, { foreignKey: 'school_class_id', as: 'batches' });
+CourseBatch.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
+CourseBatch.hasMany(Enrollment, { foreignKey: 'batch_id', as: 'enrollments' });
+Enrollment.belongsTo(CourseBatch, { foreignKey: 'batch_id', as: 'batch' });
+Course.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
+SchoolClass.hasMany(Course, { foreignKey: 'school_class_id', as: 'courses' });
 
 User.hasMany(Submission, { foreignKey: 'user_id', as: 'submissions' });
 Submission.belongsTo(User, { foreignKey: 'user_id', as: 'student' });
@@ -144,7 +192,9 @@ CourseReview.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
 module.exports = {
     sequelize,
     User,
+    SchoolClass,
     Course,
+    CourseBatch,
     Module,
     ContentItem,
     Enrollment,

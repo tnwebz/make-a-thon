@@ -15,7 +15,7 @@ app.use('/api/v1', require('./routes/auth'));
 app.use('/api/v1', require('./routes/misc'));
 app.use('/api/v1/admin', require('./routes/admin'));
 app.use('/api/v1/courses', require('./routes/courses'));
-app.use('/api/v1/code-tests', require('./routes/code-tests'));
+app.use('/api/v1/code-tests', require('./routes/digital_skills'));
 app.use('/api/v1/content', require('./routes/content'));
 app.use('/api/v1/user', require('./routes/user'));
 app.use('/api/v1/assignments', require('./routes/assignments'));

@@ -18,12 +18,15 @@ interface Student {
   status: "Active" | "Suspended";
   temp_password?: string;
   enrolled_courses: CourseEnrollment[];
+  schoolClass?: { name: string };
+  section?: string;
 }
 
 const StudentManagement = () => {
   const [activeTab, setActiveTab] = useState("Directory");
   const [students, setStudents] = useState<Student[]>([]);
   const [courses, setCourses] = useState<{ id: number, title: string }[]>([]);
+  const [classes, setClasses] = useState<{ id: number, name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -38,11 +41,12 @@ const StudentManagement = () => {
   const [newPasswordValue, setNewPasswordValue] = useState("");
 
   // Provisioning Form
-  const [newStudent, setNewStudent] = useState({ name: "", email: "", tempPass: "", assignCourse: "none" });
+  const [newStudent, setNewStudent] = useState({ name: "", email: "", tempPass: "", assignCourse: "none", school_class_id: "none", section: "" });
 
   // Bulk Upload State
   const [csvContent, setCsvContent] = useState("");
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkConfig, setBulkConfig] = useState({ school_class_id: "none", section: "" });
 
   const [toast, setToast] = useState({ show: false, msg: "", type: "success" });
   const triggerToast = (msg: string, type: "success" | "error" = "success") => {
@@ -57,12 +61,14 @@ const StudentManagement = () => {
   const fetchData = async () => {
     try {
       const token = localStorage.getItem("token");
-      const [resStudents, resCourses] = await Promise.all([
-        axios.get("http://127.0.0.1:8000/api/v1/admin/students", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("http://127.0.0.1:8000/api/v1/courses", { headers: { Authorization: `Bearer ${token}` } })
+      const [resStudents, resCourses, resClasses] = await Promise.all([
+        axios.get("http://localhost:8000/api/v1/admin/students", { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get("http://localhost:8000/api/v1/courses", { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get("http://localhost:8000/api/v1/admin/classes", { headers: { Authorization: `Bearer ${token}` } })
       ]);
       setStudents(resStudents.data);
       setCourses(resCourses.data);
+      setClasses(resClasses.data);
     } catch (err) {
       console.error("Failed to load CRM data", err);
       triggerToast("Lost connection to database", "error");
@@ -76,15 +82,17 @@ const StudentManagement = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      await axios.post("http://127.0.0.1:8000/api/v1/admin/admit-student", {
+      await axios.post("http://localhost:8000/api/v1/admin/admit-student", {
         full_name: newStudent.name,
         email: newStudent.email,
         password: newStudent.tempPass || null,
-        course_ids: newStudent.assignCourse === "none" ? [] : [parseInt(newStudent.assignCourse)]
+        course_ids: newStudent.assignCourse === "none" ? [] : [parseInt(newStudent.assignCourse)],
+        school_class_id: newStudent.school_class_id === "none" ? null : parseInt(newStudent.school_class_id),
+        section: newStudent.section || null
       }, { headers: { Authorization: `Bearer ${token}` } });
 
       triggerToast(`Account securely provisioned for ${newStudent.name}.`, "success");
-      setNewStudent({ name: "", email: "", tempPass: "", assignCourse: "none" });
+      setNewStudent({ name: "", email: "", tempPass: "", assignCourse: "none", school_class_id: "none", section: "" });
       fetchData(); // Refresh list
     } catch (err) {
       console.error(err);
@@ -97,7 +105,6 @@ const StudentManagement = () => {
     setBulkProcessing(true);
 
     const lines = csvContent.split("\n").filter(l => l.trim() !== "");
-    // Assumption: Format is Name, Email, Password (optional)
     let successCount = 0;
     const token = localStorage.getItem("token");
 
@@ -107,12 +114,16 @@ const StudentManagement = () => {
 
       const [name, email, pass] = parts;
       try {
-        await axios.post("http://127.0.0.1:8000/api/v1/admin/admit-student", {
+        const payload: any = {
           full_name: name,
           email: email,
           password: pass || null,
-          course_ids: [] // Bulk defaults to 0 courses logically, Instructor assigns later or handles differently
-        }, { headers: { Authorization: `Bearer ${token}` } });
+          course_ids: []
+        };
+        if (bulkConfig.school_class_id !== "none") payload.school_class_id = parseInt(bulkConfig.school_class_id);
+        if (bulkConfig.section) payload.section = bulkConfig.section;
+
+        await axios.post("http://localhost:8000/api/v1/admin/admit-student", payload, { headers: { Authorization: `Bearer ${token}` } });
         successCount++;
       } catch (e) { console.error(`Failed to admit ${email}`); }
     }
@@ -127,7 +138,7 @@ const StudentManagement = () => {
     try {
       const token = localStorage.getItem("token");
       const newStatus = s.status === "Active" ? "Suspended" : "Active";
-      await axios.patch(`http://127.0.0.1:8000/api/v1/admin/students/${s.id}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`http://localhost:8000/api/v1/admin/students/${s.id}/status`, { status: newStatus }, { headers: { Authorization: `Bearer ${token}` } });
       setStudents(students.map(st => st.id === s.id ? { ...st, status: newStatus } : st));
       triggerToast(`${s.full_name} is now ${newStatus}.`, "success");
     } catch (err) {
@@ -139,7 +150,7 @@ const StudentManagement = () => {
     if (!editNameValue.trim()) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/admin/students/${s.id}/name`, { name: editNameValue }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`http://localhost:8000/api/v1/admin/students/${s.id}/name`, { name: editNameValue }, { headers: { Authorization: `Bearer ${token}` } });
       setStudents(students.map(st => st.id === s.id ? { ...st, full_name: editNameValue } : st));
       setEditingNameId(null);
       triggerToast("Name updated.", "success");
@@ -152,7 +163,7 @@ const StudentManagement = () => {
     if (!newPasswordValue.trim()) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`http://127.0.0.1:8000/api/v1/admin/students/${s.id}/reset-password`, { new_password: newPasswordValue }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.patch(`http://localhost:8000/api/v1/admin/students/${s.id}/reset-password`, { new_password: newPasswordValue }, { headers: { Authorization: `Bearer ${token}` } });
       setStudents(students.map(st => st.id === s.id ? { ...st, temp_password: newPasswordValue } : st));
       setResettingPassId(null);
       setShowPasswordMap({ ...showPasswordMap, [s.id]: true });
@@ -250,7 +261,14 @@ const StudentManagement = () => {
                                       <button onClick={(e) => { e.stopPropagation(); setEditNameValue(s.full_name); setEditingNameId(s.id); }} className="text-gray-400 hover:text-black transition-colors opacity-0 group-hover:opacity-100"><Edit size={16} /></button>
                                     </div>
                                   )}
-                                  <div className="text-gray-700 text-sm font-bold mt-0.5">{s.email}</div>
+                                  <div className="text-gray-700 text-sm font-bold mt-0.5 flex items-center gap-3">
+                                    <span>{s.email}</span>
+                                    {(s.schoolClass?.name || s.section) && (
+                                      <span className="bg-gray-200 text-gray-800 px-2 py-0.5 rounded text-xs font-black uppercase tracking-wider border border-gray-300">
+                                        {s.schoolClass?.name} {s.section && `| Sec ${s.section}`}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                               <div className="col-span-4 flex items-center justify-end gap-5">
@@ -280,7 +298,7 @@ const StudentManagement = () => {
                                       <h4 className="text-xs font-black text-gray-700 uppercase tracking-widest mb-4">Enrolled Courses</h4>
                                       <div className="flex flex-col gap-4">
                                         {s.enrolled_courses.length === 0 ? (
-                                          <span className="text-gray-500 font-bold bg-white border-2 border-dashed border-gray-300 rounded-xl p-4 text-center block">— No active enrollments</span>
+                                          <span className="text-gray-500 font-bold bg-white border-2 border-dashed border-gray-300 rounded-xl p-4 text-center block">ΓÇö No active enrollments</span>
                                         ) : s.enrolled_courses.map((course, idx) => (
                                           <div key={idx} className="flex items-center justify-between bg-white border-2 border-gray-200 p-4 rounded-xl shadow-md">
                                             <span className="font-extrabold text-black text-[15px]">{course.title}</span>
@@ -313,7 +331,7 @@ const StudentManagement = () => {
                                             ) : (
                                               <>
                                                 <span className="text-black font-mono font-extrabold text-[15px] pl-3 tracking-widest flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                                                  {showPasswordMap[s.id] ? s.temp_password || "None Provided" : "••••••••"}
+                                                  {showPasswordMap[s.id] ? s.temp_password || "None Provided" : "ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó"}
                                                 </span>
                                                 <button onClick={() => setShowPasswordMap({ ...showPasswordMap, [s.id]: !showPasswordMap[s.id] })} className="p-2 shrink-0 text-gray-600 bg-gray-50 border border-gray-200 hover:text-black hover:border-black rounded-lg transition-colors shadow-sm">
                                                   {showPasswordMap[s.id] ? <EyeOff size={18} strokeWidth={2.5} /> : <Eye size={18} strokeWidth={2.5} />}
@@ -356,14 +374,17 @@ const StudentManagement = () => {
                 <p className="text-gray-600 mb-10 text-sm font-bold">Bypass normal registration to forcefully push a student profile into the system.</p>
 
                 <form onSubmit={handleAddStudent} className="space-y-8">
-                  <div>
-                    <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Full Legal Authority Name</label>
-                    <input required value={newStudent.name} onChange={e => setNewStudent({ ...newStudent, name: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors shadow-sm" placeholder="e.g. Aditi Sharma" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Full Legal Authority Name</label>
+                      <input required value={newStudent.name} onChange={e => setNewStudent({ ...newStudent, name: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors shadow-sm" placeholder="e.g. Aditi Sharma" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">University / Official Email</label>
+                      <input required type="email" value={newStudent.email} onChange={e => setNewStudent({ ...newStudent, email: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors shadow-sm" placeholder="contact@university.edu" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">University / Official Email</label>
-                    <input required type="email" value={newStudent.email} onChange={e => setNewStudent({ ...newStudent, email: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors shadow-sm" placeholder="contact@university.edu" />
-                  </div>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                       <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Provisioned Password</label>
@@ -377,6 +398,22 @@ const StudentManagement = () => {
                           <option key={c.id} value={c.id}>{c.title}</option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Target School Class</label>
+                      <select value={newStudent.school_class_id} onChange={e => setNewStudent({ ...newStudent, school_class_id: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors cursor-pointer appearance-none shadow-sm">
+                        <option value="none">-- Unassigned --</option>
+                        {classes.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Target Section</label>
+                      <input type="text" value={newStudent.section} onChange={e => setNewStudent({ ...newStudent, section: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors shadow-sm" placeholder="e.g. A, B, C" />
                     </div>
                   </div>
 
@@ -394,6 +431,22 @@ const StudentManagement = () => {
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl bg-white/70 backdrop-blur-xl rounded-2xl border border-white/60 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-10">
                 <h3 className="text-3xl font-black bg-gradient-to-br from-slate-900 via-slate-600 to-slate-900 bg-clip-text text-transparent mb-3 tracking-tight inline-block pb-1">Bulk Import Generator</h3>
                 <p className="text-gray-600 mb-8 text-sm font-bold">Paste CSV formatted data. Structure MUST follow: <span className="text-black font-mono font-black bg-gray-100 px-2 py-1 rounded">Name, Email, Password(optional)</span></p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
+                    <div>
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Target School Class</label>
+                      <select value={bulkConfig.school_class_id} onChange={e => setBulkConfig({ ...bulkConfig, school_class_id: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors cursor-pointer appearance-none shadow-sm">
+                        <option value="none">-- Unassigned --</option>
+                        {classes.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-3">Target Section</label>
+                      <input type="text" value={bulkConfig.section} onChange={e => setBulkConfig({ ...bulkConfig, section: e.target.value })} className="w-full bg-white border-2 border-gray-300 rounded-xl p-4 font-bold text-black outline-none focus:border-black transition-colors shadow-sm" placeholder="e.g. A, B, C" />
+                    </div>
+                </div>
 
                 <div className="bg-gray-50 border-2 border-gray-300 rounded-xl p-4 shadow-inner mb-6">
                   <textarea

@@ -17,14 +17,14 @@ router.get('/my-courses', authMiddleware, async (req, res) => {
             where: { user_id: req.user.id },
             include: [{ 
                 model: Course, 
-                as: 'course',
-                include: ['modules'] 
+                as: 'course'
             }]
         });
 
         const response = [];
         for (const e of enrollments) {
             const course = e.course;
+            if (!course) continue;
             let total_lessons = 0;
             // Counting total lessons (simplified for brevity, should ideally query ContentItem directly)
             const all_lessons = await ContentItem.findAll({ 
@@ -67,8 +67,8 @@ router.get('/my-courses', authMiddleware, async (req, res) => {
         }
         res.json(response);
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ detail: "Internal Server Error" });
+        console.error("DEBUG_ERROR:", error);
+        res.status(500).json({ detail: error.message, stack: error.stack });
     }
 });
 

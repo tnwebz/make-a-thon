@@ -38,14 +38,20 @@ const AdminLogin = () => {
         
         const res = await axios.post("http://127.0.0.1:8000/api/v1/login", loginParams);
         
-        if (res.data.role !== "instructor") {
-            triggerToast("Access Denied. This portal is for Instructors only.", "error");
+        if (res.data.role !== "instructor" && res.data.role !== "admin") {
+            triggerToast("Access Denied. This portal is for Staff and Admins.", "error");
             setLoading(false); return;
         }
         localStorage.setItem("token", res.data.access_token);
         localStorage.setItem("role", res.data.role);
-        triggerToast("Welcome back, Instructor!", "success");
-        setTimeout(() => navigate("/dashboard"), 1000);
+        
+        if (res.data.role === "admin") {
+            triggerToast("Welcome, Admin!", "success");
+            setTimeout(() => navigate("/admin-dashboard"), 1000);
+        } else {
+            triggerToast("Welcome back, Instructor!", "success");
+            setTimeout(() => navigate("/dashboard"), 1000);
+        }
     } catch (err: any) {
         triggerToast("Authentication failed. Check connection.", "error");
     } finally { setLoading(false); }
@@ -80,7 +86,7 @@ const AdminLogin = () => {
               <ShieldCheck size={32} strokeWidth={2.5} />
             </div>
             
-            <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-2">Instructor Access</h1>
+            <h1 className="text-3xl font-black text-gray-900 tracking-tight mb-2">Admin / Staff Access</h1>
             <p className="text-gray-500 text-sm mb-8 px-4 font-medium">Secure login for SkillForge faculty and administration.</p>
 
             {/* Social Login */}

@@ -1,12 +1,29 @@
+require('dotenv').config();
 const { Client } = require('pg');
+const { URL } = require('url');
 
-const client = new Client({
+let dbConfig = {
     user: 'postgres',
     host: 'localhost',
     password: '0728',
     port: 5432,
     database: 'postgres' // Connect to default db first
-});
+};
+
+if (process.env.DATABASE_URL) {
+    try {
+        const parsedUrl = new URL(process.env.DATABASE_URL);
+        dbConfig.user = parsedUrl.username || dbConfig.user;
+        dbConfig.password = parsedUrl.password ? decodeURIComponent(parsedUrl.password) : dbConfig.password;
+        dbConfig.host = parsedUrl.hostname || dbConfig.host;
+        dbConfig.port = parsedUrl.port || dbConfig.port;
+        dbConfig.database = 'postgres'; // Always connect to default db first to check/create the target database
+    } catch (e) {
+        console.error('Failed to parse DATABASE_URL, using default config:', e.message);
+    }
+}
+
+const client = new Client(dbConfig);
 
 async function createDb() {
     try {

@@ -9,6 +9,7 @@ import {
   X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, Image as ImageIcon
 } from "lucide-react";
 import { GlassToast } from "./components/GlassToast";
+import BatchManagementTab from "./BatchManagementTab";
 
 interface CodeProblem {
   title: string;
@@ -53,6 +54,11 @@ const CourseBuilder = () => {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
 
+  // Batches State
+  const [batches, setBatches] = useState<any[]>([]);
+  const [newBatchName, setNewBatchName] = useState("");
+  const [newBatchSection, setNewBatchSection] = useState("");
+
   // Settings & Pricing State
   const [priceType, setPriceType] = useState("Free");
   const [priceAmount, setPriceAmount] = useState("0");
@@ -79,7 +85,6 @@ const CourseBuilder = () => {
   const [problems, setProblems] = useState<CodeProblem[]>([
     { title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }
   ]);
-  const [activeProblemIndex, setActiveProblemIndex] = useState(0);
 
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ show: true, message, type });
@@ -127,11 +132,46 @@ const CourseBuilder = () => {
         console.error("Failed to load reviews:", err);
       }
       
+      try {
+        const batchRes = await axios.get(`http://127.0.0.1:8000/api/v1/courses/${courseId}/batches`, { headers: { Authorization: `Bearer ${token}` } });
+        setBatches(batchRes.data);
+      } catch (err) {
+        console.error("Failed to load batches:", err);
+      }
+      
     } catch (err) {
       console.error("Failed to load curriculum", err);
       triggerToast("Failed to load course details", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateBatch = async () => {
+    if (!newBatchName.trim() || !newBatchSection.trim()) return;
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(`http://127.0.0.1:8000/api/v1/courses/${courseId}/batches`, {
+        name: newBatchName,
+        section: newBatchSection
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      setNewBatchName("");
+      setNewBatchSection("");
+      fetchCourseData();
+      triggerToast("Batch created successfully!", "success");
+    } catch (err: any) { 
+      triggerToast(err.response?.data?.detail || "Error creating batch", "error"); 
+    }
+  };
+
+  const handleSyncStudents = async (batchId: number) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`http://127.0.0.1:8000/api/v1/courses/batches/${batchId}/onboard`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      triggerToast(res.data.message || "Students synced!", "success");
+      fetchCourseData();
+    } catch (err) {
+      triggerToast("Error syncing students", "error");
     }
   };
 
@@ -259,7 +299,10 @@ const CourseBuilder = () => {
     setEditingItem(item);
     setActiveModal("EditItem");
     setItemTitle(item.title || "");
-    setItemUrl(item.url || "");
+    setItemUrl(item.content || item.url || "");
+    setDuration(item.duration ? item.duration.toString() : "");
+    setIsMandatory(item.is_mandatory || false);
+    setItemInstructions(item.instructions || "");
   };
 
   const handleEditSave = async () => {
@@ -267,7 +310,8 @@ const CourseBuilder = () => {
     try {
       const token = localStorage.getItem("token");
       await axios.patch(`http://127.0.0.1:8000/api/v1/content/${editingItem.id}`, {
-        title: itemTitle, url: itemUrl
+        title: itemTitle, url: itemUrl, duration: duration ? parseInt(duration) : null,
+        is_mandatory: isMandatory, instructions: itemInstructions
       }, { headers: { Authorization: `Bearer ${token}` } });
       setEditingItem(null); setActiveModal(null); fetchCourseData();
       triggerToast("Item updated successfully", "success");
@@ -349,9 +393,9 @@ const CourseBuilder = () => {
 
   const tabs = [
     { name: "Curriculum", icon: <Layout size={18} /> },
+    { name: "Batches", icon: <Users size={18} /> },
     { name: "Analytics", icon: <BarChart size={18} /> },
     { name: "Pricing", icon: <Zap size={18} /> },
-    { name: "Communications", icon: <Users size={18} /> },
     { name: "Settings", icon: <Edit3 size={18} /> },
   ];
 
@@ -443,6 +487,8 @@ const CourseBuilder = () => {
             <div className="py-20 flex items-center justify-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
             </div>
+          ) : activeTab === "Batches" ? (
+            <BatchManagementTab courseId={courseId!} triggerToast={triggerToast} />
           ) : activeTab === "Curriculum" ? (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
               <div className="mb-8 flex items-center justify-between">

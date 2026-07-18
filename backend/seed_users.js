@@ -6,6 +6,8 @@ async function seedUsers() {
         // Ensure database connection
         await sequelize.authenticate();
         console.log('Connection to the database has been established successfully.');
+        await sequelize.sync({ alter: true });
+        console.log('Database synced successfully.');
 
         // Function to hash password
         const getPasswordHash = async (password) => {
