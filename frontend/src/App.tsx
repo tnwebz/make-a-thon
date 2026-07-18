@@ -22,6 +22,7 @@ import AdminDashboardLayout from "./AdminDashboardLayout";
 import ClassManagement from "./ClassManagement";
 import StaffManagement from "./StaffManagement";
 import AdminOverview from "./AdminOverview";
+import ShareHub from "./ShareHub";
 
 function App() {
   return (
@@ -57,6 +58,7 @@ function App() {
 
         <Route path="/student-dashboard" element={<ProtectedRoute requiredRole="student"><StudentDashboard /></ProtectedRoute>} />
         <Route path="/course/:courseId/player" element={<ProtectedRoute requiredRole="student"><CoursePlayer /></ProtectedRoute>} />
+        <Route path="/share-hub" element={<ProtectedRoute requiredRole="student"><ShareHub /></ProtectedRoute>} />
       </Routes>
     </Router>
   );

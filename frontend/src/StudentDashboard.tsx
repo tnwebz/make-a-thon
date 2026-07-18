@@ -10,7 +10,7 @@ import {
   Code, Play, Terminal, Monitor, AlertTriangle, Eye, EyeOff,
   ChevronRight, Menu, Zap, Cpu, Bell, Search, LayoutDashboard,
   CheckSquare, FileText, HelpCircle, Lightbulb, Trophy, Star,
-  TrendingUp, Activity, Cloud, Layers, Unlock, Video, Users
+  TrendingUp, Activity, Cloud, Layers, Unlock, Video, Users, Share2
 } from "lucide-react";
 import { GlassToast } from "./components/GlassToast";
 import StudentMeetings from "./StudentMeetings";
@@ -668,6 +668,7 @@ const StudentDashboard = () => {
           <NavItem icon={<Video size={16} />} label="Live Classes" active={activeTab === "meetings"} onClick={() => setActiveTab("meetings")} />
           <NavItem icon={<Award size={16} />} label="Certificates" active={activeTab === "certificates"} onClick={() => setActiveTab("certificates")} />
           <NavItem icon={<Compass size={16} />} label="Explore" active={activeTab === "explore"} onClick={() => setActiveTab("explore")} />
+          <NavItem icon={<Share2 size={16} />} label="ShareHub" active={false} onClick={() => navigate("/share-hub")} />
         </nav>
 
         {/* Right Actions */}
