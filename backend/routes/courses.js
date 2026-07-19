@@ -124,6 +124,60 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
     }
 });
 
+router.get('/:course_id/export', authMiddleware, async (req, res) => {
+    try {
+        const course = await Course.findOne({ 
+            where: { id: req.params.course_id },
+            include: [
+                {
+                    model: Module,
+                    include: [
+                        { model: ContentItem, as: 'items' }
+                    ]
+                }
+            ]
+        });
+        if (!course) return res.status(404).json({ detail: "Course not found" });
+
+        // Build the complete skillforge export JSON
+        const exportData = {
+            metadata: {
+                id: course.id.toString(),
+                title: course.title,
+                description: course.description,
+                price: course.price,
+                image_url: course.image_url,
+                instructor_id: course.instructor_id ? course.instructor_id.toString() : '',
+                exported_at: new Date().toISOString()
+            },
+            modules: course.Modules ? course.Modules.map(m => ({
+                id: m.id.toString(),
+                title: m.title,
+                order: m.order,
+                lessons: m.items ? m.items.map(i => {
+                    const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
+                    return {
+                        id: i.id.toString(),
+                        title: i.title,
+                        type: i.type,
+                        content: isBase64 ? '' : i.content, // Don't crash mobile JSON parser
+                        media_url: isBase64 ? `/api/v1/content/media/${i.id}` : null,
+                        duration: i.duration,
+                        instructions: i.instructions,
+                        test_config: i.test_config,
+                        is_mandatory: i.is_mandatory,
+                        order: i.order
+                    };
+                }) : []
+            })) : []
+        };
+        res.json(exportData);
+    } catch (error) {
+        console.error("Export error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
 router.post('/:course_id/modules', authMiddleware, async (req, res) => {
     try {
         const new_module = await Module.create({ ...req.body, course_id: req.params.course_id });

@@ -1197,7 +1197,7 @@ const StudentDashboard = () => {
                 <section className="mb-12">
                   <div className="mb-8">
                     <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
-                      <User size={18} className="text-blue-500" /> Public Profile
+                      <Users size={18} className="text-blue-500" /> Public Profile
                     </h3>
                   </div>
 

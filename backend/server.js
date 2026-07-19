@@ -33,6 +33,59 @@ app.use('/api/v1/assignments', require('./routes/assignments'));
 app.use('/api/v1/profile', require('./routes/profile'));
 app.use('/api/v1/offline', require('./routes/offline_sharing'));
 
+// 🎬 Mobile App Video Player — serves Plyr with a real HTTP origin
+// YouTube blocks embedding from null/about:blank origins (React Native WebView inline HTML)
+// This endpoint gives the WebView a proper origin so YouTube embedding works
+app.get('/player/:videoId', (req, res) => {
+    const { videoId } = req.params;
+    // Sanitize videoId to prevent XSS
+    const safeId = videoId.replace(/[^a-zA-Z0-9_-]/g, '');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    .plyr { width: 100%; height: 100%; }
+    .plyr__video-embed iframe { 
+      top: -50% !important; 
+      height: 200% !important; 
+    }
+    :root { --plyr-color-main: #ffffff; }
+    .plyr__control--overlaid { 
+      background: rgba(255,255,255,0.1) !important; 
+      backdrop-filter: blur(10px); 
+      color: white !important; 
+      border: 1px solid rgba(255,255,255,0.2); 
+    }
+    .plyr__control--overlaid:hover { background: rgba(255,255,255,0.2) !important; }
+  </style>
+</head>
+<body>
+  <div id="player" data-plyr-provider="youtube" data-plyr-embed-id="${safeId}"></div>
+  <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+  <script>
+    const player = new Plyr('#player', {
+      controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume'],
+      youtube: {
+        noCookie: true,
+        rel: 0,
+        showinfo: 0,
+        iv_load_policy: 3,
+        modestbranding: 1,
+        disablekb: 1
+      },
+      autoplay: true
+    });
+  </script>
+</body>
+</html>`);
+});
+
 // Basic health check route
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'SkillForge Node.js API is running' });

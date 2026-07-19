@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { io, Socket } from "socket.io-client";
-import { openDB, IDBPDatabase } from "idb";
+import { openDB } from "idb";
+import type { IDBPDatabase } from "idb";
 import axios from "axios";
 import {
   ArrowLeft, Upload, Download, Share2, Copy, Check, Play, Trash2,

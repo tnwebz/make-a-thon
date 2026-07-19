@@ -71,7 +71,7 @@ const Module = sequelize.define('Module', {
 const ContentItem = sequelize.define('ContentItem', {
     title: { type: DataTypes.STRING },
     type: { type: DataTypes.STRING },
-    content: { type: DataTypes.STRING, allowNull: true },
+    content: { type: DataTypes.TEXT, allowNull: true },
     duration: { type: DataTypes.INTEGER, allowNull: true },
     is_mandatory: { type: DataTypes.BOOLEAN, defaultValue: false },
     order: { type: DataTypes.INTEGER },

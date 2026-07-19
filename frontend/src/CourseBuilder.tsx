@@ -408,7 +408,7 @@ const CourseBuilder = () => {
   const resetForm = () => {
     setItemTitle(""); setItemUrl(""); setItemInstructions(""); setDuration(""); setIsMandatory(false);
     setProblems([{ title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }]);
-    setActiveProblemIndex(0); setEditingItem(null);
+    setEditingItem(null);
   };
 
   const toggleModule = (id: number) => {

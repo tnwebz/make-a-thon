@@ -21,6 +21,33 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 });
 
+// Stream base64 media as binary file for offline download
+router.get('/media/:id', async (req, res) => {
+    try {
+        const item = await ContentItem.findByPk(req.params.id);
+        if (!item || !item.content) return res.status(404).json({ detail: "Media not found" });
+
+        if (item.content.startsWith('data:')) {
+            // e.g. data:video/mp4;base64,AAAA...
+            const parts = item.content.split(',');
+            const match = parts[0].match(/:(.*?);/);
+            const mimeType = match ? match[1] : 'application/octet-stream';
+            const base64Data = parts[1];
+            
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            res.setHeader('Content-Type', mimeType);
+            res.setHeader('Content-Length', buffer.length);
+            res.status(200).send(buffer);
+        } else {
+            res.status(400).json({ detail: "Media is not a base64 encoded file" });
+        }
+    } catch (error) {
+        console.error("Media streaming error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
 router.post('/assignment-upload', authMiddleware, upload.single('file'), async (req, res) => {
     try {
         const { folder_link, lesson_id } = req.body;
