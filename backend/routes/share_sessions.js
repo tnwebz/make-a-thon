@@ -854,22 +854,4 @@ router.get('/:shareCode/download/module/:moduleId', shareAuthMiddleware, async (
     }
 });
 
-/**
- * GET /api/v1/share-sessions/download/offline-player-app
- * Download the standalone SkillForge-Offline-Player.html application directly
- */
-router.get('/download/offline-player-app', (req, res) => {
-    try {
-        const filePath = path.join(__dirname, '..', '..', 'frontend', 'public', 'SkillForge-Offline-Player.html');
-        if (fs.existsSync(filePath)) {
-            res.download(filePath, 'SkillForge-Offline-Player.html');
-        } else {
-            res.status(404).json({ detail: 'Offline player file not found' });
-        }
-    } catch (e) {
-        console.error('Download offline player error:', e);
-        res.status(500).json({ detail: 'Internal Server Error' });
-    }
-});
-
 module.exports = router;

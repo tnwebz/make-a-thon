@@ -24,11 +24,12 @@ export default defineConfig(({ mode }) => {
           id: '/', // Unique ID of the application
           name: 'SkillForge Offline Learning',
           short_name: 'SkillForge',
-          description: 'Digital Learning Platform for Rural School Students',
-          theme_color: '#ffffff',
-          background_color: '#ffffff',
+          description: 'Digital Learning Platform & Standalone Course Player',
+          theme_color: '#09090b',
+          background_color: '#f8fafc',
           display: 'standalone',
           start_url: '/',
+          scope: '/',
           icons: [
             // Separate purposes for each icon size to avoid the 'any maskable' warning
             {

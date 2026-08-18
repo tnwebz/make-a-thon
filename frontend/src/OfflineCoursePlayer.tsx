@@ -793,12 +793,12 @@ const OfflineCoursePlayer: React.FC = () => {
                   className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-md cursor-pointer transition-all active:scale-95"
                 >
                   <Download size={13} />
-                  <span>Install Desktop App</span>
+                  <span>Install SkillForge App</span>
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full text-xs font-bold shadow-xs">
                   <Laptop size={13} />
-                  <span>Desktop App</span>
+                  <span>SkillForge Installed</span>
                 </div>
               )}
 
@@ -937,10 +937,10 @@ const OfflineCoursePlayer: React.FC = () => {
                   <button
                     onClick={() => setShowInstallModal(true)}
                     className="p-2 sm:px-3 sm:py-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
-                    title="Install to Desktop / Home Screen"
+                    title="Install SkillForge App to Desktop or Home Screen"
                   >
                     <Download size={14} />
-                    <span className="hidden sm:inline">Install App</span>
+                    <span className="hidden sm:inline">Install SkillForge App</span>
                   </button>
                 )}
 

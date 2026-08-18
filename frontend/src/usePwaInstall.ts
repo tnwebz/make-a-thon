@@ -30,11 +30,16 @@ if (typeof window !== "undefined") {
 }
 
 export function usePwaInstall() {
-  const [canInstall, setCanInstall] = useState<boolean>(() => !!window.__deferredPwaPrompt);
+  const [canInstall, setCanInstall] = useState<boolean>(() => typeof window !== "undefined" && !!window.__deferredPwaPrompt);
   const [isInstalled, setIsInstalled] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true;
   });
+
+  const isIOS = typeof window !== "undefined" && (
+    (/iPad|iPhone|iPod/.test(navigator.userAgent)) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  ) && !(window as any).MSStream;
 
   useEffect(() => {
     const handlePromptReady = () => {
@@ -84,5 +89,5 @@ export function usePwaInstall() {
     }
   }, []);
 
-  return { canInstall, isInstalled, triggerInstall };
+  return { canInstall, isInstalled, isIOS, triggerInstall };
 }

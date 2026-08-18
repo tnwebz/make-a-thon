@@ -97,7 +97,7 @@ export function PwaInstallPrompt() {
               className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
             >
               <Download size={15} />
-              Install App
+              Install SkillForge App
             </button>
             <button
               onClick={handleDismiss}

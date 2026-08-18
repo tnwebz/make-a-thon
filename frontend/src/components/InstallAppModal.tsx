@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   X, Download, Laptop, CheckCircle2, ShieldCheck, 
   ExternalLink, Sparkles, Plus, HelpCircle, HardDrive, 
-  Layers, ArrowRight
+  Layers, ArrowRight, Smartphone, Share
 } from "lucide-react";
 import { usePwaInstall } from "../usePwaInstall";
+import { useNavigate } from "react-router-dom";
 
 interface InstallAppModalProps {
   isOpen: boolean;
@@ -13,38 +14,37 @@ interface InstallAppModalProps {
 }
 
 export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClose }) => {
-  const { canInstall, isInstalled, triggerInstall } = usePwaInstall();
-  const [downloadTriggered, setDownloadTriggered] = useState(false);
+  const { canInstall, isInstalled, isIOS, triggerInstall } = usePwaInstall();
   const [installSuccess, setInstallSuccess] = useState(false);
-  const handleInstallAppPWA = async () => {
-    // 1. Immediately trigger the direct file download of the offline app
-    const link = document.createElement("a");
-    link.href = "/SkillForge-Offline-Player.html";
-    link.download = "SkillForge-Offline-Player.html";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const [showManualGuide, setShowManualGuide] = useState(false);
+  const navigate = useNavigate();
 
-    setDownloadTriggered(true);
+  const handleInstallClick = async () => {
+    if (isInstalled) {
+      navigate("/offline-player");
+      onClose();
+      return;
+    }
 
-    // 2. Also trigger native browser install prompt if available
-    try {
-      const outcome = await triggerInstall();
-      if (outcome === "accepted") {
-        setInstallSuccess(true);
-        setTimeout(() => {
-          onClose();
-        }, 2000);
-      }
-    } catch (e) {}
+    if (isIOS) {
+      setShowManualGuide(true);
+      return;
+    }
+
+    const outcome = await triggerInstall();
+    if (outcome === "accepted") {
+      setInstallSuccess(true);
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } else {
+      // If native programmatic prompt not exposed, show standard PWA browser guide
+      setShowManualGuide(true);
+    }
   };
 
-  const handleDownloadAppFile = () => {
-    handleInstallAppPWA();
-  };
-
-  const handleOpenWebPlayer = () => {
-    window.open("/offline-player", "_blank");
+  const handleOpenOfflinePlayer = () => {
+    navigate("/offline-player");
     onClose();
   };
 
@@ -78,19 +78,21 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
             {/* Header */}
             <div className="flex items-start justify-between relative z-10">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-2xl shadow-md">
-                  S
-                </div>
+                <img 
+                  src="/pwa-192x192.png" 
+                  alt="SkillForge App" 
+                  className="w-12 h-12 rounded-2xl shadow-md border border-slate-100 object-cover" 
+                />
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                      SkillForge Desktop App
+                      SkillForge App
                     </h3>
                     <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
                       PWA
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 font-semibold">Standalone Offline Course Player</p>
+                  <p className="text-xs text-slate-400 font-semibold">Progressive Web Application</p>
                 </div>
               </div>
 
@@ -103,16 +105,28 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
               </button>
             </div>
 
-            {/* Success Message */}
-            {installSuccess ? (
-              <div className="my-8 text-center space-y-3">
+            {/* If Already Installed or Just Installed */}
+            {isInstalled || installSuccess ? (
+              <div className="my-6 text-center space-y-4">
                 <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                   <CheckCircle2 size={36} />
                 </div>
-                <h4 className="text-xl font-black text-slate-900">App Installed Successfully!</h4>
-                <p className="text-xs text-slate-500 font-medium">
-                  SkillForge has been added to your Desktop & Taskbar. You can launch it anytime without internet.
-                </p>
+                <div>
+                  <h4 className="text-xl font-black text-slate-900">SkillForge is already installed</h4>
+                  <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto mt-1.5 leading-relaxed">
+                    SkillForge is installed as a standalone app on this device. You can launch it from your Desktop or Mobile Home Screen anytime offline.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={handleOpenOfflinePlayer}
+                    className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
+                  >
+                    <span>Open Offline Player</span>
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -123,7 +137,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                       <ShieldCheck size={18} />
                     </div>
                     <span className="text-xs font-black text-slate-900">100% Offline</span>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Zero Wi-Fi or data required</span>
+                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Works without internet</span>
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
@@ -138,39 +152,59 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                     <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
                       <Laptop size={18} />
                     </div>
-                    <span className="text-xs font-black text-slate-900">Desktop Icon</span>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Runs in clean window</span>
+                    <span className="text-xs font-black text-slate-900">Home Screen Icon</span>
+                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Desktop & Mobile app</span>
                   </div>
                 </div>
 
-                {/* Download / Installed Notification Banner */}
-                {downloadTriggered && (
-                  <div className="mb-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 animate-fadeIn">
-                    <div className="font-black flex items-center gap-1.5 text-emerald-700">
-                      <CheckCircle2 size={16} />
-                      <span>App Downloaded Successfully!</span>
-                    </div>
-                    <p className="text-slate-600 pl-5 text-[11px] leading-relaxed">
-                      Simply double-click <strong>SkillForge-Offline-Player.html</strong> on your Desktop or Mobile to launch and use 100% offline anytime without internet!
-                    </p>
-                  </div>
+                {/* Device-Specific Guidance (If programmatic prompt not available) */}
+                {showManualGuide && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="mb-4 p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-xs text-indigo-900 space-y-2.5 overflow-hidden"
+                  >
+                    {isIOS ? (
+                      <div>
+                        <div className="font-extrabold flex items-center gap-1.5 text-indigo-950 mb-1">
+                          <Smartphone size={15} className="text-indigo-600" />
+                          <span>Install on iPhone / iPad:</span>
+                        </div>
+                        <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1 text-[11px] leading-relaxed">
+                          <li>Tap the <strong>Share button (⎋)</strong> at the bottom of Safari.</li>
+                          <li>Scroll down and tap <strong>"Add to Home Screen" (+)</strong>.</li>
+                          <li>Tap <strong>Add</strong> at the top right to install SkillForge!</li>
+                        </ol>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="font-extrabold flex items-center gap-1.5 text-indigo-950 mb-1">
+                          <HelpCircle size={15} className="text-indigo-600" />
+                          <span>Install SkillForge in your Browser:</span>
+                        </div>
+                        <p className="text-slate-600 text-[11px] leading-relaxed">
+                          Look at your browser address bar at the top right and click the <strong>Install app (⊕)</strong> icon to add SkillForge to your Desktop / Taskbar.
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
                 )}
 
                 {/* Action Buttons */}
                 <div className="space-y-2 pt-1">
                   <button
-                    onClick={handleInstallAppPWA}
+                    onClick={handleInstallClick}
                     className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
                   >
                     <Download size={18} />
-                    <span>Install App to Desktop / Mobile (PWA)</span>
+                    <span>Install SkillForge App</span>
                   </button>
 
                   <button
-                    onClick={handleOpenWebPlayer}
-                    className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    onClick={handleOpenOfflinePlayer}
+                    className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
-                    <span>Open Standalone Web Player</span>
+                    <span>Open Offline Player</span>
                     <ExternalLink size={14} />
                   </button>
                 </div>
@@ -179,7 +213,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
 
             {/* Footer note */}
             <p className="text-[11px] text-slate-400 text-center font-medium mt-4">
-              1-Click Automatic Download • Works on Windows, Mac, Android & iOS.
+              Standards-Based Progressive Web Application (PWA)
             </p>
           </motion.div>
         </div>
