@@ -9,6 +9,7 @@ import {
   Unlock, Award, Play, ExternalLink, Download, Loader2, Sparkles,
   Wifi, Eye, AlertCircle, RefreshCw, Maximize2, BookOpen, Laptop
 } from "lucide-react";
+import { InstallAppModal } from "./components/InstallAppModal";
 
 interface LessonItem {
   id: number;
@@ -63,6 +64,7 @@ const SharedCourseViewer: React.FC = () => {
   
   const [downloadingCourse, setDownloadingCourse] = useState(false);
   const [downloadingModuleId, setDownloadingModuleId] = useState<number | null>(null);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   // Responsive window resize listener
   useEffect(() => {
@@ -704,9 +706,9 @@ const SharedCourseViewer: React.FC = () => {
           <div className="flex items-center gap-2">
             {/* Offline App / Standalone Player Button */}
             <button
-              onClick={() => window.open("/offline-player", "_blank")}
+              onClick={() => setShowInstallModal(true)}
               className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="Open standalone Offline Player to view downloaded ZIPs anytime"
+              title="Install Desktop App or open Offline Player to view downloaded ZIPs anytime"
             >
               <Laptop size={14} className="text-indigo-600 shrink-0" />
               <span className="hidden sm:inline">Offline App</span>
@@ -735,6 +737,12 @@ const SharedCourseViewer: React.FC = () => {
           {renderContent()}
         </div>
       </div>
+
+      {/* Standalone Desktop App Install Modal */}
+      <InstallAppModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
 
     </div>
   );

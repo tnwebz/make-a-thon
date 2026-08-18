@@ -73,6 +73,15 @@ export default defineConfig(({ mode }) => {
               form_factor: 'narrow',
               label: 'SkillForge Mobile View'
             }
+          ],
+          shortcuts: [
+            {
+              name: 'Offline Course Player',
+              short_name: 'Offline Player',
+              description: 'Open standalone course ZIP player',
+              url: '/offline-player',
+              icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+            }
           ]
         },
         workbox: {

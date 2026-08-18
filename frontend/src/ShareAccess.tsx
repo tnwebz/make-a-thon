@@ -8,6 +8,7 @@ import {
   Download, Eye, Sparkles, RefreshCw, Laptop
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { InstallAppModal } from "./components/InstallAppModal";
 
 interface CoursePreviewData {
   shareCode: string;
@@ -37,6 +38,7 @@ const ShareAccess: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [hasExistingToken, setHasExistingToken] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   useEffect(() => {
     if (!codeUpper) return;
@@ -170,9 +172,9 @@ const ShareAccess: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => window.open("/offline-player", "_blank")}
+            onClick={() => setShowInstallModal(true)}
             className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold transition-all cursor-pointer"
-            title="Open standalone Offline Player to view downloaded ZIPs anytime"
+            title="Install Desktop App or open Offline Player to view downloaded ZIPs anytime"
           >
             <Laptop size={13} className="text-indigo-600" />
             <span>Offline App</span>
@@ -353,6 +355,12 @@ const ShareAccess: React.FC = () => {
       <footer className="w-full max-w-lg pb-3 text-center text-xs text-slate-400 font-medium z-10">
         SkillForge Offline Sharing Engine &copy; {new Date().getFullYear()}
       </footer>
+
+      {/* Standalone Desktop App Install Modal */}
+      <InstallAppModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
     </div>
   );
 };

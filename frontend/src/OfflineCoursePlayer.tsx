@@ -10,6 +10,8 @@ import {
   FolderOpen, Trash2, BookOpen, Laptop, HardDrive, RefreshCw,
   Maximize2, ArrowLeft, Layers, Check, X, ShieldCheck
 } from "lucide-react";
+import { usePwaInstall } from "./usePwaInstall";
+import { InstallAppModal } from "./components/InstallAppModal";
 
 interface OfflineLesson {
   id: string | number;
@@ -71,11 +73,13 @@ const OfflineCoursePlayer: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Player UI states
+  const { canInstall, isInstalled } = usePwaInstall();
   const [sidebarOpen, setSidebarOpen] = useState(typeof window !== "undefined" ? window.innerWidth >= 1024 : true);
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 1024 : false);
   const [expandedModules, setExpandedModules] = useState<string[]>([]);
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -783,9 +787,24 @@ const OfflineCoursePlayer: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              {!isInstalled ? (
+                <button
+                  onClick={() => setShowInstallModal(true)}
+                  className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-md cursor-pointer transition-all active:scale-95"
+                >
+                  <Download size={13} />
+                  <span>Install Desktop App</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full text-xs font-bold shadow-xs">
+                  <Laptop size={13} />
+                  <span>Desktop App</span>
+                </div>
+              )}
+
               <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full text-xs font-bold shadow-xs">
                 <ShieldCheck size={14} />
-                <span>100% Offline App</span>
+                <span>100% Offline</span>
               </div>
             </div>
           </div>
@@ -914,6 +933,17 @@ const OfflineCoursePlayer: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
+                {!isInstalled && (
+                  <button
+                    onClick={() => setShowInstallModal(true)}
+                    className="p-2 sm:px-3 sm:py-1.5 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Install to Desktop / Home Screen"
+                  >
+                    <Download size={14} />
+                    <span className="hidden sm:inline">Install App</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setShowLibraryModal(true)}
                   className="p-2 sm:px-3 sm:py-1.5 text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
@@ -1012,6 +1042,12 @@ const OfflineCoursePlayer: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Standalone Desktop App Install Modal */}
+      <InstallAppModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
 
     </div>
   );
