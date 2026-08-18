@@ -667,6 +667,14 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
             ? course.Modules.sort((a, b) => (a.order || 0) - (b.order || 0))
             : [];
 
+        const manifest = {
+            title: course.title,
+            description: course.description,
+            exportedAt: new Date().toISOString(),
+            version: "1.0",
+            modules: []
+        };
+
         for (let mi = 0; mi < modules.length; mi++) {
             const mod = modules[mi];
             const moduleFolderName = sanitizeFilename(`Module ${mi + 1} - ${mod.title}`);
@@ -674,29 +682,40 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
                 ? mod.items.sort((a, b) => (a.order || 0) - (b.order || 0))
                 : [];
 
+            const manifestModule = {
+                id: mod.id,
+                title: mod.title,
+                order: mod.order || mi + 1,
+                lessons: []
+            };
+
             for (let li = 0; li < lessons.length; li++) {
                 const lesson = lessons[li];
                 const lessonPrefix = String(li + 1).padStart(2, '0');
                 const lessonName = sanitizeFilename(lesson.title);
+                let lessonFilePath = null;
+                let ext = '';
 
                 if (lesson.content && (lesson.content.startsWith('/uploads/') || lesson.content.startsWith('uploads/'))) {
                     // Disk file -> stream from disk directly into ZIP
                     const relPath = lesson.content.startsWith('/') ? lesson.content.substring(1) : lesson.content;
                     const fullPath = path.join(__dirname, '..', relPath);
                     if (fs.existsSync(fullPath)) {
-                        const ext = path.extname(fullPath);
+                        ext = path.extname(fullPath);
+                        lessonFilePath = `${moduleFolderName}/${lessonPrefix} - ${lessonName}${ext}`;
                         archive.file(fullPath, {
-                            name: `${courseName}/${moduleFolderName}/${lessonPrefix} - ${lessonName}${ext}`
+                            name: `${courseName}/${lessonFilePath}`
                         });
                     }
                 } else if (lesson.content && lesson.content.startsWith('data:')) {
                     // Base64 content → decode to binary
-                    const ext = getExtFromDataUrl(lesson.content);
+                    ext = getExtFromDataUrl(lesson.content);
                     const parts = lesson.content.split(',');
                     const base64Data = parts[1];
                     const buffer = Buffer.from(base64Data, 'base64');
+                    lessonFilePath = `${moduleFolderName}/${lessonPrefix} - ${lessonName}${ext}`;
                     archive.append(buffer, {
-                        name: `${courseName}/${moduleFolderName}/${lessonPrefix} - ${lessonName}${ext}`
+                        name: `${courseName}/${lessonFilePath}`
                     });
                 } else if (lesson.content) {
                     // Text/URL content → save as .txt
@@ -704,12 +723,35 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
                     const content = isYouTube
                         ? `YouTube Video: ${lesson.content}\n\nNote: This video requires an internet connection to view.`
                         : lesson.content;
+                    lessonFilePath = `${moduleFolderName}/${lessonPrefix} - ${lessonName}.txt`;
                     archive.append(content, {
-                        name: `${courseName}/${moduleFolderName}/${lessonPrefix} - ${lessonName}.txt`
+                        name: `${courseName}/${lessonFilePath}`
                     });
                 }
+
+                manifestModule.lessons.push({
+                    id: lesson.id,
+                    title: lesson.title,
+                    type: lesson.type,
+                    duration: lesson.duration,
+                    is_mandatory: lesson.is_mandatory,
+                    order: lesson.order || li + 1,
+                    instructions: lesson.instructions,
+                    filePath: lessonFilePath,
+                    textContent: (!lessonFilePath || lessonFilePath.endsWith('.txt')) ? lesson.content : null
+                });
             }
+
+            manifest.modules.push(manifestModule);
         }
+
+        // Add manifest JSON at root and inside course folder
+        archive.append(JSON.stringify(manifest, null, 2), {
+            name: `${courseName}/course_manifest.json`
+        });
+        archive.append(JSON.stringify(manifest, null, 2), {
+            name: `course_manifest.json`
+        });
 
         await archive.finalize();
     } catch (error) {

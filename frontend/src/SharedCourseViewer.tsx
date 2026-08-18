@@ -7,7 +7,7 @@ import {
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle,
   UploadCloud, CheckCircle, ChevronDown, ChevronRight, Lock,
   Unlock, Award, Play, ExternalLink, Download, Loader2, Sparkles,
-  Wifi, Eye, AlertCircle, RefreshCw, Maximize2, BookOpen
+  Wifi, Eye, AlertCircle, RefreshCw, Maximize2, BookOpen, Laptop
 } from "lucide-react";
 
 interface LessonItem {
@@ -702,6 +702,16 @@ const SharedCourseViewer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Offline App / Standalone Player Button */}
+            <button
+              onClick={() => window.open("/offline-player", "_blank")}
+              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              title="Open standalone Offline Player to view downloaded ZIPs anytime"
+            >
+              <Laptop size={14} className="text-indigo-600 shrink-0" />
+              <span className="hidden sm:inline">Offline App</span>
+            </button>
+
             {/* Offline Badge */}
             <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
               <Wifi size={12} className="shrink-0" />

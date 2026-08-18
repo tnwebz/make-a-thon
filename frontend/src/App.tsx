@@ -27,6 +27,7 @@ import ShareHub from "./ShareHub";
 import InstructorShareHub from "./InstructorShareHub";
 import ShareAccess from "./ShareAccess";
 import SharedCourseViewer from "./SharedCourseViewer";
+import OfflineCoursePlayer from "./OfflineCoursePlayer";
 
 import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
@@ -34,7 +35,7 @@ import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
 
 function App() {
   useEffect(() => {
-    if (!navigator.onLine) {
+    if (!navigator.onLine && !window.location.pathname.startsWith("/offline-player") && !window.location.pathname.startsWith("/share")) {
       window.location.replace("/offline.html");
     }
   }, []);
@@ -52,6 +53,9 @@ function App() {
         {/* PUBLIC OFFLINE SHARE ACCESS & COURSE VIEWER ROUTES */}
         <Route path="/share/:shareCode" element={<ShareAccess />} />
         <Route path="/share/:shareCode/course" element={<SharedCourseViewer />} />
+
+        {/* STANDALONE OFFLINE PWA COURSE PLAYER (DRAG & DROP ZIP IMPORTER) */}
+        <Route path="/offline-player" element={<OfflineCoursePlayer />} />
 
         {/* ADMIN ROUTES */}
         <Route path="/admin-dashboard" element={<ProtectedRoute requiredRole="admin"><AdminDashboardLayout /></ProtectedRoute>}>

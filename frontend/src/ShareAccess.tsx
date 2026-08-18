@@ -5,7 +5,7 @@ import axios from "axios";
 import { 
   KeyRound, Users, Star, BookOpen, Layers, Lock, 
   ArrowRight, Wifi, AlertCircle, Loader2, CheckCircle2,
-  Download, Eye, Sparkles, RefreshCw
+  Download, Eye, Sparkles, RefreshCw, Laptop
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -168,9 +168,20 @@ const ShareAccess: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold text-slate-600">
-          <Wifi size={14} className="text-emerald-500" />
-          <span>Offline LAN</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => window.open("/offline-player", "_blank")}
+            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold transition-all cursor-pointer"
+            title="Open standalone Offline Player to view downloaded ZIPs anytime"
+          >
+            <Laptop size={13} className="text-indigo-600" />
+            <span>Offline App</span>
+          </button>
+
+          <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold text-slate-600">
+            <Wifi size={14} className="text-emerald-500" />
+            <span className="hidden xs:inline">Offline LAN</span>
+          </div>
         </div>
       </header>
 
