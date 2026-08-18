@@ -24,6 +24,9 @@ import ClassManagement from "./ClassManagement";
 import StaffManagement from "./StaffManagement";
 import AdminOverview from "./AdminOverview";
 import ShareHub from "./ShareHub";
+import InstructorShareHub from "./InstructorShareHub";
+import ShareAccess from "./ShareAccess";
+import SharedCourseViewer from "./SharedCourseViewer";
 
 import { PwaInstallPrompt } from "./components/PwaInstallPrompt";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
@@ -46,6 +49,10 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/admin-login" element={<AdminLogin />} />
 
+        {/* PUBLIC OFFLINE SHARE ACCESS & COURSE VIEWER ROUTES */}
+        <Route path="/share/:shareCode" element={<ShareAccess />} />
+        <Route path="/share/:shareCode/course" element={<SharedCourseViewer />} />
+
         {/* ADMIN ROUTES */}
         <Route path="/admin-dashboard" element={<ProtectedRoute requiredRole="admin"><AdminDashboardLayout /></ProtectedRoute>}>
           <Route index element={<AdminOverview />} />
@@ -65,6 +72,7 @@ function App() {
           <Route path="meetings" element={<MeetingManager />} />
           <Route path="add-admits" element={<AddAdmits />} />
           <Route path="course/:courseId/preview" element={<CoursePreview />} />
+          <Route path="share-hub/:courseId" element={<InstructorShareHub />} />
           <Route path="code-arena" element={<CodeArena />} />
           <Route path="students" element={<StudentManagement />} />
           <Route path="settings" element={<InstructorSettings />} />

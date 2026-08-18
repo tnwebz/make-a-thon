@@ -158,12 +158,23 @@ router.delete('/downloads/:filename', authMiddleware, async (req, res) => {
 // Get the server's local IP address
 router.get('/local-ip', (req, res) => {
     try {
+        const hostHeader = req.headers.host;
+        if (hostHeader) {
+            const hostIp = hostHeader.split(':')[0];
+            if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') {
+                return res.json({ ip: hostIp });
+            }
+        }
+
         const interfaces = os.networkInterfaces();
         let localIp = '127.0.0.1';
 
         for (const name of Object.keys(interfaces)) {
             for (const iface of interfaces[name]) {
                 if (iface.family === 'IPv4' && !iface.internal) {
+                    if (iface.address.startsWith('192.168.')) {
+                        return res.json({ ip: iface.address });
+                    }
                     localIp = iface.address;
                 }
             }

@@ -119,6 +119,7 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     server: {
+      host: '0.0.0.0', // ✅ Binds to all network interfaces for LAN connectivity
       port: 5173, // ✅ Keeps the port fixed
       hmr: {
         overlay: false, // ✅ Fixes the WebSocket disconnect error

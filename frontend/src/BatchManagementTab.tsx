@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "./config";
 import { Users, CheckCircle, Search, UserPlus, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -38,7 +39,7 @@ export default function BatchManagementTab({ courseId, triggerToast }: { courseI
     const fetchBatches = async () => {
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.get(`http://localhost:8000/api/v1/courses/${courseId}/batches`, {
+            const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/batches`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setBatches(res.data);
@@ -52,7 +53,7 @@ export default function BatchManagementTab({ courseId, triggerToast }: { courseI
     const fetchClasses = async () => {
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.get(`http://localhost:8000/api/v1/admin/classes`, {
+            const res = await axios.get(`${API_BASE_URL}/admin/classes`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setClasses(res.data);
@@ -65,7 +66,7 @@ export default function BatchManagementTab({ courseId, triggerToast }: { courseI
         setLoadingStudents(true);
         try {
             const token = localStorage.getItem("token");
-            let url = `http://localhost:8000/api/v1/admin/classes/${classId}/students`;
+            let url = `${API_BASE_URL}/admin/classes/${classId}/students`;
             if (section) url += `?section=${section}`;
             const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
             setStudents(res.data);
@@ -82,7 +83,7 @@ export default function BatchManagementTab({ courseId, triggerToast }: { courseI
 
         try {
             const token = localStorage.getItem("token");
-            await axios.post(`http://localhost:8000/api/v1/courses/${courseId}/batches`, {
+            await axios.post(`${API_BASE_URL}/courses/${courseId}/batches`, {
                 name: newBatchName,
                 school_class_id: selectedClassId,
                 student_ids: Array.from(selectedStudentIds)
@@ -123,7 +124,7 @@ export default function BatchManagementTab({ courseId, triggerToast }: { courseI
         }
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.post("http://localhost:8000/api/v1/admin/admit-student", {
+            const res = await axios.post(`${API_BASE_URL}/admin/admit-student`, {
                 full_name: newStudentName,
                 email: newStudentEmail,
                 password: newStudentPassword,

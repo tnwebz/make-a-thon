@@ -8,18 +8,37 @@ const { sequelize } = require('./models');
 const app = express();
 const server = http.createServer(app);
 
+// CORS Configuration supporting LAN (192.168.x.x, 10.x.x.x) and Localhost
+const corsOptions = {
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        const isAllowed = 
+            origin.startsWith('http://localhost') ||
+            origin.startsWith('http://127.0.0.1') ||
+            origin.startsWith('http://192.168.') ||
+            origin.startsWith('http://10.') ||
+            (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL);
+        return callback(null, isAllowed);
+    },
+    credentials: true
+};
+
 // Socket.IO setup with CORS
 const io = new Server(server, {
     cors: {
-        origin: '*',
+        origin: true,
+        credentials: true,
         methods: ['GET', 'POST']
     }
 });
 
+const path = require('path');
+
 // Middleware
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api/v1', require('./routes/auth'));
@@ -32,6 +51,7 @@ app.use('/api/v1/user', require('./routes/user'));
 app.use('/api/v1/assignments', require('./routes/assignments'));
 app.use('/api/v1/profile', require('./routes/profile'));
 app.use('/api/v1/offline', require('./routes/offline_sharing'));
+app.use('/api/v1/share-sessions', require('./routes/share_sessions'));
 
 // 🎬 Mobile App Video Player — serves Plyr with a real HTTP origin
 // YouTube blocks embedding from null/about:blank origins (React Native WebView inline HTML)

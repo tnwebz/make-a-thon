@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "./config";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
     LayoutDashboard, BookOpen, Users, Settings, LogOut,
@@ -35,7 +36,7 @@ const DashboardLayout = () => {
         const fetchProfile = async () => {
             try {
                 const token = localStorage.getItem("token");
-                const res = await axios.get("http://127.0.0.1:8000/api/v1/profile", { headers: { Authorization: `Bearer ${token}` } });
+                const res = await axios.get(`${API_BASE_URL}/profile`, { headers: { Authorization: `Bearer ${token}` } });
                 setUserProfile({
                     ...res.data,
                     name: res.data.full_name || "Instructor",

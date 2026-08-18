@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "./config";
 import { Users, BookOpen, ShieldCheck, Activity, ArrowRight, UserPlus, PlusCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { useNavigate } from "react-router-dom";
-
-const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
 
 const AdminOverview = () => {
   const navigate = useNavigate();

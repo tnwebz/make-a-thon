@@ -1,21 +1,34 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "./config";
-import { Save, Image as ImageIcon, IndianRupee, ArrowLeft, Clock } from "lucide-react";
+import { 
+  Save, Image as ImageIcon, ArrowLeft, Clock, Upload, 
+  Trash2, Link as LinkIcon, Sparkles, CheckCircle2 
+} from "lucide-react";
 
 const CreateCourse = () => {
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ title: "", description: "", price: "", image_url: "", duration: "", school_class_id: "none" });
+  const [formData, setFormData] = useState({ 
+    title: "", 
+    description: "", 
+    price: "", 
+    image_url: "", 
+    duration: "", 
+    school_class_id: "none" 
+  });
+  const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isFree, setIsFree] = useState(false);
   const [classes, setClasses] = useState<any[]>([]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchClasses = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await axios.get("http://127.0.0.1:8000/api/v1/admin/classes", { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get(`${API_BASE_URL}/admin/classes`, { headers: { Authorization: `Bearer ${token}` } });
         setClasses(res.data);
       } catch (err) {
         console.error("Failed to load classes", err);
@@ -24,25 +37,66 @@ const CreateCourse = () => {
     fetchClasses();
   }, []);
 
+  // Handle direct file selection
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Image size exceeds 15MB. Please choose a smaller image.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setImagePreview(base64);
+      setFormData(prev => ({ ...prev, image_url: base64 }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setImagePreview(null);
+    setFormData(prev => ({ ...prev, image_url: "" }));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   // 🎨 PROFESSIONAL THEME
   const brand = {
     blue: "#005EB8",
     border: "#e2e8f0",
     textLabel: "#475569",
-    inputBg: "#ffffff", // White input on off-white card
+    inputBg: "#ffffff",
     textMain: "#1e293b",
-    cardBg: "#F8FAFC" // Off-white card
+    cardBg: "#F8FAFC"
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault(); 
+    setLoading(true);
     try {
       const token = localStorage.getItem("token");
       const finalDescription = formData.duration ? `${formData.description}\n\n[Duration: ${formData.duration}]` : formData.description;
-      const response = await axios.post(`${API_BASE_URL}/courses`, { title: formData.title, description: finalDescription, price: isFree ? 0 : parseInt(formData.price), image_url: formData.image_url, school_class_id: formData.school_class_id }, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.post(
+        `${API_BASE_URL}/courses`, 
+        { 
+          title: formData.title, 
+          description: finalDescription, 
+          price: isFree ? 0 : (parseInt(formData.price) || 0), 
+          image_url: formData.image_url, 
+          school_class_id: formData.school_class_id 
+        }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       alert("Course Created Successfully! 🎉 Let's add some content.");
       navigate(`/dashboard/course/${response.data.id}/builder`);
-    } catch (error: any) { console.error(error); alert("Failed to create course."); } finally { setLoading(false); }
+    } catch (error: any) { 
+      console.error(error); 
+      alert("Failed to create course."); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -90,12 +144,124 @@ const CreateCourse = () => {
             </div>
           </div>
 
+          {/* COURSE THUMBNAIL (Direct File Upload & URL Option) */}
           <div>
-            <label style={labelStyle}>Thumbnail URL (Optional)</label>
-            <div style={{ position: "relative" }}>
-              <ImageIcon size={16} style={iconOverlayStyle} strokeWidth={1.5} />
-              <input type="text" placeholder="https://image-link.com/photo.jpg" value={formData.image_url} onChange={(e) => setFormData({...formData, image_url: e.target.value})} style={{ ...inputStyle, paddingLeft: "40px" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <label style={{ ...labelStyle, marginBottom: 0 }}>Course Thumbnail</label>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => setUploadMode("file")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: uploadMode === "file" ? "700" : "500",
+                    color: uploadMode === "file" ? brand.blue : "#94a3b8",
+                    cursor: "pointer",
+                    textDecoration: uploadMode === "file" ? "underline" : "none"
+                  }}
+                >
+                  Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadMode("url")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "12px",
+                    fontWeight: uploadMode === "url" ? "700" : "500",
+                    color: uploadMode === "url" ? brand.blue : "#94a3b8",
+                    cursor: "pointer",
+                    textDecoration: uploadMode === "url" ? "underline" : "none"
+                  }}
+                >
+                  Paste URL
+                </button>
+              </div>
             </div>
+
+            {uploadMode === "file" ? (
+              <div>
+                {imagePreview || formData.image_url ? (
+                  <div style={{ position: "relative", borderRadius: "12px", overflow: "hidden", border: `1px solid ${brand.border}`, background: "white", maxHeight: "220px" }}>
+                    <img 
+                      src={imagePreview || formData.image_url} 
+                      alt="Thumbnail Preview" 
+                      style={{ width: "100%", height: "200px", objectFit: "cover" }} 
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      style={{
+                        position: "absolute",
+                        top: "12px",
+                        right: "12px",
+                        background: "rgba(220, 38, 38, 0.9)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "8px",
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        fontWeight: "600",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+                      }}
+                    >
+                      <Trash2 size={14} /> Remove Image
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: "2px dashed #cbd5e1",
+                      borderRadius: "12px",
+                      padding: "32px 20px",
+                      textAlign: "center",
+                      background: "#ffffff",
+                      cursor: "pointer",
+                      transition: "border-color 0.2s"
+                    }}
+                  >
+                    <input 
+                      ref={fileInputRef}
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleImageFileChange} 
+                      style={{ display: "none" }} 
+                    />
+                    <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px auto", color: brand.blue }}>
+                      <Upload size={22} />
+                    </div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: "#1e293b", marginBottom: "4px" }}>
+                      Click to upload course image
+                    </div>
+                    <p style={{ fontSize: "12px", color: "#64748b", margin: 0 }}>
+                      PNG, JPG, WEBP or GIF (Recommended 16:9 aspect ratio)
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <ImageIcon size={16} style={iconOverlayStyle} strokeWidth={1.5} />
+                <input 
+                  type="text" 
+                  placeholder="https://images.unsplash.com/photo-..." 
+                  value={formData.image_url} 
+                  onChange={(e) => {
+                    setFormData({...formData, image_url: e.target.value});
+                    setImagePreview(e.target.value);
+                  }} 
+                  style={{ ...inputStyle, paddingLeft: "40px" }} 
+                />
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "16px", marginTop: "10px" }}>

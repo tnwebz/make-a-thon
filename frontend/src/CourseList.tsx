@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "./config";
 import axios from "axios";
-import { PlusCircle, BookOpen, Trash2, Users, Star, Settings, Play } from "lucide-react";
+import { PlusCircle, BookOpen, Trash2, Users, Star, Settings, Play, Share2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 const CourseList = () => {
@@ -142,20 +142,31 @@ const CourseList = () => {
 
                                     {/* Actions */}
                                     <div className="mt-auto flex flex-col gap-3">
-                                        <button
-                                            onClick={() => navigate(`/dashboard/course/${course.id}/builder`)}
-                                            className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-3 rounded-2xl font-semibold hover:bg-slate-800 transition-colors"
-                                        >
-                                            <Settings size={18} />
-                                            Edit / Manage
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => navigate(`/dashboard/course/${course.id}/builder`)}
+                                                className="flex-1 flex items-center justify-center gap-2 bg-slate-900 text-white px-3 py-3 rounded-2xl font-semibold hover:bg-slate-800 transition-colors text-sm"
+                                            >
+                                                <Settings size={16} />
+                                                Edit
+                                            </button>
 
-                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => navigate(`/dashboard/share-hub/${course.id}`)}
+                                                className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-3 rounded-2xl font-semibold transition-colors text-sm shadow-sm"
+                                                title="Share Hub (Offline LAN)"
+                                            >
+                                                <Share2 size={16} />
+                                                Share
+                                            </button>
+                                        </div>
+
+                                        <div className="flex gap-2">
                                             <button
                                                 onClick={() => navigate(`/dashboard/course/${course.id}/preview`)}
-                                                className="flex-1 flex items-center justify-center gap-2 bg-slate-100 text-slate-700 px-4 py-3 rounded-2xl font-semibold hover:bg-slate-200 transition-colors"
+                                                className="flex-1 flex items-center justify-center gap-2 bg-slate-100 text-slate-700 px-4 py-3 rounded-2xl font-semibold hover:bg-slate-200 transition-colors text-sm"
                                             >
-                                                <Play size={18} />
+                                                <Play size={16} />
                                                 Preview
                                             </button>
                                             <button
@@ -163,7 +174,7 @@ const CourseList = () => {
                                                 className="flex items-center justify-center bg-red-50 text-red-500 px-4 py-3 rounded-2xl hover:bg-red-100 hover:text-red-600 transition-colors"
                                                 title="Delete Course"
                                             >
-                                                <Trash2 size={20} />
+                                                <Trash2 size={18} />
                                             </button>
                                         </div>
                                     </div>

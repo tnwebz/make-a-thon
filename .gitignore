@@ -18,6 +18,13 @@ backend/node_modules/
 backend/token.json
 backend/credentials.json
 backend/.env
+backend/uploads/
+uploads/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
 *.log
 *.egg-info/
 dist/

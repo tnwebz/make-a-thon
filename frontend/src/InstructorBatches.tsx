@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Layers, Users, KeyRound, Search, X, UserPlus, Trash2, BookOpen, CheckCircle, Edit2, PlusCircle } from "lucide-react";
 import axios from "axios";
+import { API_BASE_URL } from "./config";
 
 export default function InstructorBatches() {
     const [batches, setBatches] = useState<any[]>([]);
@@ -11,7 +12,7 @@ export default function InstructorBatches() {
     const fetchBatches = async () => {
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.get("http://localhost:8000/api/v1/courses/instructor/batches", {
+            const res = await axios.get(`${API_BASE_URL}/courses/instructor/batches`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             setBatches(res.data);
@@ -99,7 +100,7 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
     const fetchStudents = async () => {
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.get(`http://localhost:8000/api/v1/courses/batches/${batch.id}/students`, {
+            const res = await axios.get(`${API_BASE_URL}/courses/batches/${batch.id}/students`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             setStudents(res.data);
@@ -116,7 +117,7 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
 
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.patch(`http://localhost:8000/api/v1/courses/batches/students/${userId}/reset-password`, { new_password: newPassword }, {
+            const res = await axios.patch(`${API_BASE_URL}/courses/batches/students/${userId}/reset-password`, { new_password: newPassword }, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.status === 200) {
@@ -131,7 +132,7 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
         if (!confirm("Are you sure you want to remove this student from the batch and course?")) return;
         try {
             const token = localStorage.getItem("token");
-            const res = await axios.delete(`http://localhost:8000/api/v1/courses/batches/${batch.id}/students/${userId}`, {
+            const res = await axios.delete(`${API_BASE_URL}/courses/batches/${batch.id}/students/${userId}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             if (res.status === 200) {
@@ -148,7 +149,7 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
 
         try {
             const token = localStorage.getItem("token");
-            await axios.patch(`http://localhost:8000/api/v1/courses/batches/${batch.id}`, { name: newName }, {
+            await axios.patch(`${API_BASE_URL}/courses/batches/${batch.id}`, { name: newName }, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             setBatchName(newName);
@@ -162,7 +163,7 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
         
         try {
             const token = localStorage.getItem("token");
-            await axios.delete(`http://localhost:8000/api/v1/courses/batches/${batch.id}`, {
+            await axios.delete(`${API_BASE_URL}/courses/batches/${batch.id}`, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             onClose(); // Close modal and refresh in parent
@@ -176,16 +177,8 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
         setLoadingAvailable(true);
         try {
             const token = localStorage.getItem("token");
-            // Fetch all students in the school class if exists, else fetch all users?
-            // Let's just fetch all students in the school class for simplicity.
-            // Wait, we need an admin token to fetch classes. Actually, the instructor might not be an admin.
-            // Oh, the `GET /api/v1/admin/classes/:id/students` is an admin route.
-            // Since we just need to search any student, we could add a simple route in courses or just let them type an email.
-            // Or better, fetch the class students if school_class_id exists.
             if (batch.school_class_id) {
-                // If instructor is also admin, this works. Usually they are. If not, this might fail with 403.
-                // Let's try it.
-                const res = await axios.get(`http://localhost:8000/api/v1/admin/classes/${batch.school_class_id}/students`, {
+                const res = await axios.get(`${API_BASE_URL}/admin/classes/${batch.school_class_id}/students`, {
                     headers: { "Authorization": `Bearer ${token}` }
                 });
                 setAvailableStudents(res.data);
@@ -202,7 +195,7 @@ function BatchDetailsModal({ batch, onClose }: { batch: any, onClose: () => void
     const handleAddStudentToBatch = async (studentId: number) => {
         try {
             const token = localStorage.getItem("token");
-            await axios.post(`http://localhost:8000/api/v1/courses/batches/${batch.id}/students`, { student_id: studentId }, {
+            await axios.post(`${API_BASE_URL}/courses/batches/${batch.id}/students`, { student_id: studentId }, {
                 headers: { "Authorization": `Bearer ${token}` }
             });
             setToast({ show: true, msg: "Student added to batch!", type: "success" });

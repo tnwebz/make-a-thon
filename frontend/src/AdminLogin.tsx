@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "./config";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Lock, Mail, ArrowRight, CheckCircle, GraduationCap, 
@@ -36,7 +37,7 @@ const AdminLogin = () => {
         loginParams.append("username", formData.email);
         loginParams.append("password", formData.password);
         
-        const res = await axios.post("http://127.0.0.1:8000/api/v1/login", loginParams);
+        const res = await axios.post(`${API_BASE_URL}/login`, loginParams);
         
         if (res.data.role !== "instructor" && res.data.role !== "admin") {
             triggerToast("Access Denied. This portal is for Staff and Admins.", "error");

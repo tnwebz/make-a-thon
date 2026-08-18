@@ -42,7 +42,6 @@ const Dashboard = () => {
       const fetchAnalytics = async () => {
           try {
               const token = localStorage.getItem("token");
-              const API_BASE_URL = "http://127.0.0.1:8000/api/v1";
               const res = await axios.get(`${API_BASE_URL}/instructor/overview-analytics`, {
                   headers: { Authorization: `Bearer ${token}` }
               });

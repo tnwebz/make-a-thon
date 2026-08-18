@@ -403,11 +403,21 @@ const CoursePlayer = () => {
                     }}
                     options={plyrOptions}
                   />
-                ) : activeLesson.content && (activeLesson.content.endsWith(".mp4") || activeLesson.content.endsWith(".webm") || activeLesson.content.endsWith(".ogg")) ? (
+                ) : activeLesson.content && (
+                  activeLesson.content.startsWith("data:") || 
+                  activeLesson.content.endsWith(".mp4") || 
+                  activeLesson.content.endsWith(".webm") || 
+                  activeLesson.content.endsWith(".ogg")
+                ) ? (
                   <Plyr
                     source={{
                       type: "video",
-                      sources: [{ src: activeLesson.content, provider: "html5" }]
+                      sources: [{ 
+                        src: activeLesson.content.startsWith("data:") 
+                          ? `${API_BASE_URL}/content/media/${activeLesson.id}` 
+                          : activeLesson.content, 
+                        provider: "html5" 
+                      }]
                     }}
                     options={{
                       controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],

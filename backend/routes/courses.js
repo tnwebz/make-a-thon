@@ -63,11 +63,12 @@ router.get('/', authMiddleware, async (req, res) => {
 
 router.post('/', authMiddleware, async (req, res) => {
     try {
-        const { title, description, price, school_class_id } = req.body;
+        const { title, description, price, school_class_id, image_url } = req.body;
         const new_course = await Course.create({ 
             title, 
             description, 
             price, 
+            image_url: image_url || null,
             school_class_id: school_class_id !== "none" ? school_class_id : null,
             instructor_id: req.user.id 
         });
@@ -106,15 +107,19 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
                 id: m.id,
                 title: m.title,
                 order: m.order,
-                lessons: m.items ? m.items.map(i => ({
-                    id: i.id,
-                    title: i.title,
-                    type: i.type,
-                    content: i.content,
-                    duration: i.duration,
-                    is_mandatory: i.is_mandatory,
-                    order: i.order
-                })) : []
+                lessons: m.items ? m.items.map(i => {
+                    const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
+                    return {
+                        id: i.id,
+                        title: i.title,
+                        type: i.type,
+                        content: isBase64 ? `/api/v1/content/media/${i.id}` : i.content,
+                        duration: i.duration,
+                        is_mandatory: i.is_mandatory,
+                        order: i.order,
+                        instructions: i.instructions
+                    };
+                }) : []
             })) : []
         };
         res.json(responseData);

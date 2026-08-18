@@ -52,7 +52,7 @@ const Course = sequelize.define('Course', {
     title: { type: DataTypes.STRING },
     description: { type: DataTypes.STRING },
     price: { type: DataTypes.INTEGER },
-    image_url: { type: DataTypes.STRING, allowNull: true },
+    image_url: { type: DataTypes.TEXT, allowNull: true },
     is_published: { type: DataTypes.BOOLEAN, defaultValue: false },
     is_finalized: { type: DataTypes.BOOLEAN, defaultValue: false },
     school_class_id: { type: DataTypes.INTEGER, allowNull: true },
@@ -131,6 +131,17 @@ const CourseReview = sequelize.define('CourseReview', {
     feedback: { type: DataTypes.TEXT, allowNull: true },
 }, { timestamps: true, tableName: 'course_reviews' });
 
+const ShareSession = sequelize.define('ShareSession', {
+    shareCode: { type: DataTypes.STRING(10), unique: true, allowNull: false },
+    courseId: { type: DataTypes.INTEGER, allowNull: false },
+    createdById: { type: DataTypes.INTEGER, allowNull: false },
+    accessMode: { type: DataTypes.STRING, allowNull: false, defaultValue: 'VIEW_ONLY' }, // VIEW_ONLY | ALLOW_DOWNLOAD
+    passkeyHash: { type: DataTypes.STRING, allowNull: false },
+    passkeyPlain: { type: DataTypes.STRING, allowNull: true },
+    status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'ACTIVE' }, // ACTIVE | REVOKED | EXPIRED
+    expiresAt: { type: DataTypes.DATE, allowNull: true },
+}, { timestamps: true, tableName: 'share_sessions' });
+
 // Setup Relationships
 SchoolClass.hasMany(User, { foreignKey: 'school_class_id', as: 'students' });
 User.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
@@ -190,6 +201,12 @@ CourseReview.belongsTo(User, { foreignKey: 'user_id', as: 'student' });
 Course.hasMany(CourseReview, { foreignKey: 'course_id' });
 CourseReview.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
 
+// ShareSession Relationships
+Course.hasMany(ShareSession, { foreignKey: 'courseId', as: 'shareSessions' });
+ShareSession.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
+User.hasMany(ShareSession, { foreignKey: 'createdById', as: 'shareSessions' });
+ShareSession.belongsTo(User, { foreignKey: 'createdById', as: 'creator' });
+
 module.exports = {
     sequelize,
     User,
@@ -205,5 +222,6 @@ module.exports = {
     TestResult,
     LessonProgress,
     ScheduledClass,
-    CourseReview
+    CourseReview,
+    ShareSession
 };

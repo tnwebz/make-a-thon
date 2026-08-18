@@ -7,7 +7,8 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import {
   ArrowLeft, Video, HelpCircle, FileText, Star,
   Trash2, Edit3, Layout, ChevronDown, Plus, Code, Radio, Zap,
-  X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, BookOpen, Image as ImageIcon
+  X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, BookOpen, Image as ImageIcon,
+  UploadCloud
 } from "lucide-react";
 import { GlassToast } from "./components/GlassToast";
 import BatchManagementTab from "./BatchManagementTab";
@@ -83,6 +84,9 @@ const CourseBuilder = () => {
 
   const [itemTitle, setItemTitle] = useState("");
   const [itemUrl, setItemUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [itemInstructions, setItemInstructions] = useState("");
   const [duration, setDuration] = useState("");
   const [isMandatory, setIsMandatory] = useState(false);
@@ -90,6 +94,18 @@ const CourseBuilder = () => {
   const [problems, setProblems] = useState<CodeProblem[]>([
     { title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }
   ]);
+
+  const resetForm = () => {
+    setItemTitle("");
+    setItemUrl("");
+    setSelectedFile(null);
+    setUploadProgress(null);
+    setIsUploadingFile(false);
+    setItemInstructions("");
+    setDuration("");
+    setIsMandatory(false);
+    setProblems([{ title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }]);
+  };
 
 
   const triggerToast = (message: string, type: "success" | "error" = "success") => {
@@ -321,23 +337,78 @@ const CourseBuilder = () => {
   const handleEditStart = (item: any) => {
     if (isFinalized) return;
     setEditingItem(item);
-    setActiveModal("EditItem");
+    const modalName = (item.type === 'code_test' || item.type === 'code') ? 'Code Test' : (item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1) : 'Item');
+    setActiveModal(modalName);
     setItemTitle(item.title || "");
     setItemUrl(item.content || item.url || "");
     setDuration(item.duration ? item.duration.toString() : "");
     setIsMandatory(item.is_mandatory || false);
     setItemInstructions(item.instructions || "");
+
+    if (item.test_config) {
+      try {
+        let parsed = JSON.parse(item.test_config);
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+        if (parsed.problems && Array.isArray(parsed.problems)) {
+          setProblems(parsed.problems);
+        }
+      } catch (e) {}
+    } else {
+      setProblems([{ title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }]);
+    }
   };
 
   const handleEditSave = async () => {
     if (!editingItem) return;
     try {
       const token = localStorage.getItem("token");
-      await axios.patch(`${API_BASE_URL}/content/${editingItem.id}`, {
-        title: itemTitle, url: itemUrl, duration: duration ? parseInt(duration) : null,
+      let finalUrl = itemUrl;
+
+      if (selectedFile) {
+        setIsUploadingFile(true);
+        try {
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+
+          const uploadRes = await axios.post(`${API_BASE_URL}/content/upload`, formData, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "multipart/form-data"
+            },
+            onUploadProgress: (progressEvent) => {
+              if (progressEvent.total) {
+                const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                setUploadProgress(percent);
+              }
+            }
+          });
+
+          finalUrl = uploadRes.data.fileUrl;
+        } catch (uploadErr) {
+          console.error("Upload error:", uploadErr);
+          triggerToast("Failed to upload file. Please try again.", "error");
+          setIsUploadingFile(false);
+          return;
+        } finally {
+          setIsUploadingFile(false);
+        }
+      }
+
+      const payload: any = {
+        title: itemTitle, url: finalUrl, duration: duration ? parseInt(duration) : null,
         is_mandatory: isMandatory, instructions: itemInstructions
-      }, { headers: { Authorization: `Bearer ${token}` } });
-      setEditingItem(null); setActiveModal(null); fetchCourseData();
+      };
+
+      if (editingItem.type === "code" || editingItem.type === "code_test" || editingItem.type === "test" || activeModal === "Code Test" || activeModal === "Code") {
+        for (let i = 0; i < problems.length; i++) {
+          if (!problems[i].title.trim()) return triggerToast(`Problem ${i + 1} is missing a title!`, "error");
+          if (!problems[i].description.trim()) return triggerToast(`Problem ${i + 1} is missing a description!`, "error");
+        }
+        payload.test_config = JSON.stringify({ problems });
+      }
+
+      await axios.patch(`${API_BASE_URL}/content/${editingItem.id}`, payload, { headers: { Authorization: `Bearer ${token}` } });
+      setEditingItem(null); setActiveModal(null); resetForm(); fetchCourseData();
       triggerToast("Item updated successfully", "success");
     } catch (err) { triggerToast("Failed to update item.", "error"); }
   };
@@ -349,12 +420,44 @@ const CourseBuilder = () => {
     const token = localStorage.getItem("token");
     const typeKey = activeModal?.toLowerCase().replace(" ", "_") || "video";
 
+    let finalUrl = itemUrl;
+
+    if (selectedFile) {
+      setIsUploadingFile(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+
+        const uploadRes = await axios.post(`${API_BASE_URL}/content/upload`, formData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data"
+          },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setUploadProgress(percent);
+            }
+          }
+        });
+
+        finalUrl = uploadRes.data.fileUrl;
+      } catch (uploadErr) {
+        console.error("Upload error:", uploadErr);
+        triggerToast("Failed to upload file. Please try again.", "error");
+        setIsUploadingFile(false);
+        return;
+      } finally {
+        setIsUploadingFile(false);
+      }
+    }
+
     const payload: any = {
-      title: itemTitle, type: typeKey, data_url: itemUrl, duration: duration ? parseInt(duration) : null,
+      title: itemTitle, type: typeKey, url: finalUrl, duration: duration ? parseInt(duration) : null,
       is_mandatory: isMandatory, instructions: itemInstructions, module_id: selectedModuleId
     };
 
-    if (activeModal === "Code Test") {
+    if (activeModal === "Code Test" || activeModal === "Code" || typeKey === "code" || typeKey === "code_test") {
       for (let i = 0; i < problems.length; i++) {
         if (!problems[i].title.trim()) return triggerToast(`Problem ${i + 1} is missing a title!`, "error");
         if (!problems[i].description.trim()) return triggerToast(`Problem ${i + 1} is missing a description!`, "error");
@@ -403,12 +506,6 @@ const CourseBuilder = () => {
     } finally {
       setIsSavingSettings(false);
     }
-  };
-
-  const resetForm = () => {
-    setItemTitle(""); setItemUrl(""); setItemInstructions(""); setDuration(""); setIsMandatory(false);
-    setProblems([{ title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }]);
-    setEditingItem(null);
   };
 
   const toggleModule = (id: number) => {
@@ -862,13 +959,39 @@ const CourseBuilder = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="border-2 border-blue-400 border-dashed rounded-2xl p-8 bg-blue-50/50 text-center flex flex-col items-center justify-center gap-3">
+                    <div className="border-2 border-blue-400 border-dashed rounded-2xl p-8 bg-blue-50/50 text-center flex flex-col items-center justify-center gap-4">
                       <div className="w-16 h-16 bg-blue-100 flex items-center justify-center rounded-full text-blue-500"><ImageIcon size={32} /></div>
-                      <div className="text-blue-900 font-bold">Inject Thumbnail via Image URL</div>
+                      <div>
+                        <div className="text-blue-900 font-bold text-base mb-1">Upload Thumbnail Image</div>
+                        <p className="text-xs text-slate-500">Choose an image file from your device or paste a URL below</p>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () => setCourseImageUrl(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                          className="w-full text-xs text-slate-500 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer bg-white p-2 rounded-xl border border-blue-200"
+                        />
+                      </div>
+
+                      <div className="w-full max-w-md flex items-center gap-2 text-xs text-slate-400">
+                        <div className="flex-1 h-px bg-slate-200" />
+                        <span>OR PASTE URL</span>
+                        <div className="flex-1 h-px bg-slate-200" />
+                      </div>
+
                       <input
                         placeholder="https://images.unsplash..."
                         value={courseImageUrl} onChange={e => setCourseImageUrl(e.target.value)}
-                        className="mt-2 w-full max-w-md p-3 rounded-xl border border-blue-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-sm font-medium"
+                        className="w-full max-w-md p-3 rounded-xl border border-blue-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-sm font-medium bg-white"
                       />
                     </div>
                   )}
@@ -975,29 +1098,222 @@ const CourseBuilder = () => {
                   />
                 </div>
 
-                {activeModal !== "Code Test" && (
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">External Link / URL or File Upload</label>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                          {/* <LinkIcon size={18} /> */}
-                        </div>
-                        <input
-                          value={itemUrl} onChange={(e) => setItemUrl(e.target.value)}
-                          placeholder="https://... or choose file"
-                          className="w-full text-lg p-4 pl-12 rounded-xl border-2 border-slate-200 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium transition-all"
-                        />
-                      </div>
-                      <input type="file" onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => setItemUrl(reader.result as string);
-                          reader.readAsDataURL(file);
-                        }
-                      }} className="w-1/3 text-xs text-slate-500 file:mr-4 file:py-3 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+                {(activeModal === "Code Test" || activeModal === "Code") ? (
+                  <div className="space-y-6 border-t border-slate-200 pt-6">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-extrabold text-slate-800 text-base">Coding Problems & Test Cases</h4>
+                      <button
+                        type="button"
+                        onClick={() => setProblems([...problems, { title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }])}
+                        className="px-3 py-1.5 bg-purple-50 text-purple-600 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-colors flex items-center gap-1"
+                      >
+                        <Plus size={14} /> Add Problem
+                      </button>
                     </div>
+
+                    {problems.map((prob, pIdx) => (
+                      <div key={pIdx} className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 relative">
+                        {problems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setProblems(problems.filter((_, idx) => idx !== pIdx))}
+                            className="absolute top-4 right-4 text-slate-400 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Problem {pIdx + 1} Title <span className="text-red-500">*</span></label>
+                            <input
+                              value={prob.title}
+                              onChange={(e) => {
+                                const updated = [...problems];
+                                updated[pIdx].title = e.target.value;
+                                setProblems(updated);
+                              }}
+                              placeholder="e.g. Reverse a String"
+                              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div className="w-1/3">
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Difficulty</label>
+                            <select
+                              value={prob.difficulty}
+                              onChange={(e) => {
+                                const updated = [...problems];
+                                updated[pIdx].difficulty = e.target.value;
+                                setProblems(updated);
+                              }}
+                              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-purple-500"
+                            >
+                              <option value="Easy">Easy</option>
+                              <option value="Medium">Medium</option>
+                              <option value="Hard">Hard</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 mb-1">Problem Description <span className="text-red-500">*</span></label>
+                          <textarea
+                            value={prob.description}
+                            onChange={(e) => {
+                              const updated = [...problems];
+                              updated[pIdx].description = e.target.value;
+                              setProblems(updated);
+                            }}
+                            rows={3}
+                            placeholder="Describe the problem, constraints, and requirements..."
+                            className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-purple-500"
+                          />
+                        </div>
+
+                        {/* Test Cases */}
+                        <div className="space-y-3 pt-2">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Test Cases</label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...problems];
+                                updated[pIdx].testCases.push({ input: "", output: "" });
+                                setProblems(updated);
+                              }}
+                              className="text-xs font-bold text-purple-600 hover:text-purple-700"
+                            >
+                              + Add Test Case
+                            </button>
+                          </div>
+
+                          {prob.testCases.map((tc, tcIdx) => (
+                            <div key={tcIdx} className="flex gap-3 items-center">
+                              <div className="flex-1">
+                                <input
+                                  value={tc.input}
+                                  onChange={(e) => {
+                                    const updated = [...problems];
+                                    updated[pIdx].testCases[tcIdx].input = e.target.value;
+                                    setProblems(updated);
+                                  }}
+                                  placeholder="Input (e.g. hello)"
+                                  className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:border-purple-500"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <input
+                                  value={tc.output}
+                                  onChange={(e) => {
+                                    const updated = [...problems];
+                                    updated[pIdx].testCases[tcIdx].output = e.target.value;
+                                    setProblems(updated);
+                                  }}
+                                  placeholder="Expected Output (e.g. olleh)"
+                                  className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-mono outline-none focus:border-purple-500"
+                                />
+                              </div>
+                              {prob.testCases.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...problems];
+                                    updated[pIdx].testCases = updated[pIdx].testCases.filter((_, idx) => idx !== tcIdx);
+                                    setProblems(updated);
+                                  }}
+                                  className="text-slate-400 hover:text-red-500 p-1"
+                                >
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block text-sm font-bold text-slate-700">Video / PDF / Resource Content</label>
+                    
+                    {/* Selected File Card */}
+                    {selectedFile ? (
+                      <div className="p-4 bg-blue-50/70 border-2 border-blue-200 rounded-2xl flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                            {selectedFile.name.endsWith(".mp4") || selectedFile.name.endsWith(".webm") ? "VID" : "DOC"}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-slate-900 truncate">
+                              {selectedFile.name}
+                            </div>
+                            <div className="text-xs font-semibold text-blue-700">
+                              {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload to server
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFile(null)}
+                          className="px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold rounded-xl transition-colors shrink-0"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* File Upload Drop Area */}
+                        <label className="border-2 border-dashed border-slate-200 hover:border-blue-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/50 hover:bg-blue-50/20 transition-all">
+                          <UploadCloud size={24} className="text-blue-600 mb-1.5" />
+                          <span className="text-xs font-bold text-slate-800">Upload Video or PDF File</span>
+                          <span className="text-[10px] text-slate-400 mt-0.5">Supports large MP4, WebM, PDF (Up to 2GB)</span>
+                          <input
+                            type="file"
+                            accept="video/*,application/pdf"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setSelectedFile(file);
+                                if (!itemTitle.trim()) {
+                                  // Auto-fill title from filename
+                                  const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+                                  setItemTitle(nameWithoutExt);
+                                }
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+
+                        {/* URL Paste Option */}
+                        <div className="flex flex-col justify-center border-2 border-slate-200 rounded-2xl p-3 bg-white">
+                          <span className="text-[11px] font-bold text-slate-500 mb-1.5">Or Paste Web / YouTube Link:</span>
+                          <input
+                            value={itemUrl}
+                            onChange={(e) => setItemUrl(e.target.value)}
+                            placeholder="https://youtube.com/watch?v=..."
+                            className="w-full text-xs p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-500 font-medium"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Progress Bar when uploading */}
+                    {isUploadingFile && uploadProgress !== null && (
+                      <div className="space-y-1.5 p-3 bg-blue-50 rounded-xl border border-blue-200">
+                        <div className="flex justify-between text-xs font-bold text-blue-900">
+                          <span>Uploading large media to server storage...</span>
+                          <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-blue-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600 transition-all duration-200"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

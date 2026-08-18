@@ -1,0 +1,9 @@
+uploads/
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.pdf
+!**/media/.gitkeep
+!**/thumbnails/.gitkeep

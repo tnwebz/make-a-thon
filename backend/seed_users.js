@@ -33,6 +33,24 @@ async function seedUsers() {
             console.log('✅ Student user created: student@gmail.com');
         }
 
+        // Seed / Update Student 2: student2@gmail.com / 123
+        const [student2, createdStudent2] = await User.findOrCreate({
+            where: { email: 'student2@gmail.com' },
+            defaults: {
+                full_name: 'Student Learner 2',
+                hashed_password: passwordHash,
+                role: 'student',
+                status: 'Active',
+                temp_password: '123'
+            }
+        });
+        if (!createdStudent2) {
+            await student2.update({ hashed_password: passwordHash, status: 'Active', role: 'student' });
+            console.log('🔄 Student user updated: student2@gmail.com');
+        } else {
+            console.log('✅ Student user created: student2@gmail.com');
+        }
+
         // Seed / Update Instructor: staff@gmail.com / 123
         const [instructor, createdInstructor] = await User.findOrCreate({
             where: { email: 'staff@gmail.com' },
