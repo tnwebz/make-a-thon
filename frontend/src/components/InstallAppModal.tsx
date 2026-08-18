@@ -14,26 +14,26 @@ interface InstallAppModalProps {
 
 export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClose }) => {
   const { canInstall, isInstalled, triggerInstall } = usePwaInstall();
-  const [showManualGuide, setShowManualGuide] = useState(false);
+  const [downloadTriggered, setDownloadTriggered] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
 
-  const handleInstallClick = async () => {
-    if (isInstalled) {
-      window.open("/offline-player", "_blank");
-      onClose();
-      return;
-    }
+  const handleDownloadApp = () => {
+    // 1. Direct file download of the standalone offline player
+    const link = document.createElement("a");
+    link.href = "/SkillForge-Offline-Player.html";
+    link.download = "SkillForge-Offline-Player.html";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    const outcome = await triggerInstall();
-    if (outcome === "accepted") {
-      setInstallSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    } else if (outcome === "unavailable") {
-      // Browser didn't provide native trigger directly, show instructions
-      setShowManualGuide(true);
-    }
+    setDownloadTriggered(true);
+
+    // 2. Also try native PWA installation if available
+    triggerInstall().then((outcome) => {
+      if (outcome === "accepted") {
+        setInstallSuccess(true);
+      }
+    });
   };
 
   const handleOpenWebPlayer = () => {
@@ -136,29 +136,27 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                   </div>
                 </div>
 
-                {/* Manual Browser Guide (If prompt wasn't triggered automatically) */}
-                {showManualGuide && (
-                  <div className="mb-5 p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-xs text-indigo-900 space-y-2">
-                    <div className="font-extrabold flex items-center gap-1.5">
-                      <HelpCircle size={15} className="text-indigo-600" />
-                      <span>How to Install on Desktop / Browser:</span>
+                {/* Download / Installed Notification Banner */}
+                {downloadTriggered && (
+                  <div className="mb-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 animate-fadeIn">
+                    <div className="font-black flex items-center gap-1.5 text-emerald-700">
+                      <CheckCircle2 size={16} />
+                      <span>Downloading SkillForge-Offline-Player.html!</span>
                     </div>
-                    <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1 leading-relaxed">
-                      <li>Look at your browser address bar at the top right.</li>
-                      <li>Click the <strong>Install app (⊕)</strong> or <strong>App available</strong> icon.</li>
-                      <li>Click <strong>Install</strong> to add SkillForge to your Desktop & Taskbar!</li>
-                    </ol>
+                    <p className="text-slate-600 pl-5">
+                      Save this file to your Desktop. Whenever you want to view a downloaded course, simply double-click the file and drop your course ZIP!
+                    </p>
                   </div>
                 )}
 
                 {/* Action Buttons */}
                 <div className="space-y-2.5 pt-2">
                   <button
-                    onClick={handleInstallClick}
+                    onClick={handleDownloadApp}
                     className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
                   >
                     <Download size={18} />
-                    <span>{isInstalled ? "Launch Desktop App" : "Download & Install to Desktop"}</span>
+                    <span>Download Desktop App (.html)</span>
                   </button>
 
                   <button

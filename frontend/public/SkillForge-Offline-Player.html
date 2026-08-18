@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkillForge Offline Course Player</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <!-- JSZip CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2, h3, h4, .font-heading { font-family: 'Inter', sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 999px; }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-slate-900 select-none overflow-hidden h-screen w-screen flex flex-col">
+
+  <!-- ================= EMPTY STATE / DROP ZONE ================= -->
+  <div id="drop-zone-view" class="flex-1 flex flex-col justify-between items-center p-6 sm:p-10 relative overflow-y-auto">
+    <!-- Background Glow -->
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-[450px] pointer-events-none opacity-60"
+         style="background: radial-gradient(circle at 50% 15%, rgba(5, 150, 105, 0.09) 0%, rgba(248, 250, 252, 0) 70%);"></div>
+
+    <!-- Header -->
+    <header class="w-full max-w-4xl flex items-center justify-between z-10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-xl shadow-sm">
+          S
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">SkillForge Offline</h1>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none">Standalone Desktop Player</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full text-xs font-bold shadow-xs">
+        <i data-lucide="shield-check" class="w-4 h-4"></i>
+        <span>100% Offline App</span>
+      </div>
+    </header>
+
+    <!-- Main '+' Drop Zone Card -->
+    <main class="w-full max-w-xl my-auto py-6 z-10">
+      <div id="drop-area" class="bg-white/80 backdrop-blur-2xl border-2 border-dashed border-slate-300 hover:border-slate-900 rounded-[2.5rem] p-8 sm:p-12 text-center shadow-[0_20px_60px_rgba(0,0,0,0.03)] cursor-pointer group transition-all space-y-6 relative overflow-hidden">
+        
+        <!-- Center Glowing '+' Icon -->
+        <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900 group-hover:bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-xl shadow-slate-900/10 group-hover:shadow-emerald-500/30 transition-all group-hover:scale-105 duration-300">
+          <i data-lucide="plus" class="w-12 h-12 stroke-[2.5]"></i>
+        </div>
+
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-2">
+            Drop Course ZIP Here
+          </h2>
+          <p class="text-sm text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
+            Drag and drop your downloaded course package, or click anywhere to select the <span class="font-mono font-bold text-slate-700">.zip</span> file.
+          </p>
+        </div>
+
+        <div id="error-msg" class="hidden bg-red-50 border border-red-200 text-red-700 text-xs font-semibold p-3 rounded-2xl"></div>
+
+        <div class="pt-2 flex justify-center">
+          <button type="button" class="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer">
+            <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+            <span>Select Course ZIP</span>
+          </button>
+        </div>
+
+        <div class="pt-4 border-t border-slate-100 flex items-center justify-center gap-6 text-[11px] font-bold text-slate-400">
+          <span>⚡ Zero Internet Required</span>
+          <span>🔒 Stored Directly on Device</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-4xl text-center text-xs text-slate-400 font-medium z-10">
+      SkillForge Standalone Portable Player &copy; 2026 • Portable HTML5 App
+    </footer>
+  </div>
+
+  <!-- ================= PLAYER VIEW (HIDDEN INITIALLY) ================= -->
+  <div id="player-view" class="hidden flex-1 flex overflow-hidden w-full h-full relative">
+    
+    <!-- LEFT SIDEBAR CURRICULUM -->
+    <aside id="sidebar" class="w-80 sm:w-96 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 z-30 transition-all duration-300">
+      <!-- Sidebar Header -->
+      <div class="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div>
+          <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Offline Course</span>
+          <h2 id="sidebar-course-title" class="text-base font-black text-slate-900 truncate max-w-[220px]">Course</h2>
+        </div>
+        <button id="btn-load-another" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl border border-emerald-200 text-xs font-bold flex items-center gap-1 cursor-pointer" title="Load another ZIP">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span class="hidden sm:inline">New ZIP</span>
+        </button>
+      </div>
+
+      <!-- Modules Accordion -->
+      <div id="modules-list" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+        <!-- Injected via JavaScript -->
+      </div>
+
+      <!-- Certificate Box -->
+      <div class="p-4 border-t border-slate-100 shrink-0 bg-slate-50/50">
+        <div id="cert-box" class="p-4 rounded-2xl bg-white border border-slate-200 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div id="cert-icon" class="w-8 h-8 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center">
+              <i data-lucide="award" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <div class="text-xs font-extrabold text-slate-800">Course Certificate</div>
+              <div id="cert-status" class="text-[10px] font-bold text-slate-400">Complete all lessons</div>
+            </div>
+          </div>
+          <div id="cert-lock" class="text-slate-300">
+            <i data-lucide="lock" class="w-4 h-4"></i>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT CONTENT AREA -->
+    <main class="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden relative">
+      <!-- Top Bar -->
+      <div class="p-4 sm:p-6 pb-2 flex items-center justify-between shrink-0 z-20">
+        <div class="flex items-center gap-3">
+          <button id="btn-toggle-sidebar" class="p-2 sm:px-3 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs flex items-center gap-1.5 cursor-pointer">
+            <i data-lucide="menu" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Modules</span>
+          </button>
+          <div id="badge-course" class="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-full text-xs font-black text-slate-800 shadow-xs max-w-xs truncate">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+            <span id="top-course-title" class="truncate">Course</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+            <i data-lucide="hard-drive" class="w-3.5 h-3.5"></i>
+            <span>Local Disk</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Media Stage -->
+      <div id="media-stage" class="flex-1 flex flex-col items-center justify-center p-3 sm:p-6 overflow-hidden">
+        <!-- Rendered dynamically (Video or PDF or Text) -->
+      </div>
+
+      <!-- Bottom Navigation Dock -->
+      <div class="py-3 sm:py-4 px-4 sm:px-8 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-between shrink-0 shadow-sm">
+        <div class="min-w-0 pr-4">
+          <h3 id="bottom-lesson-title" class="text-sm sm:text-base font-black text-slate-900 truncate">Lesson Title</h3>
+          <p id="bottom-lesson-type" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lesson Type</p>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btn-prev" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Prev</span>
+          </button>
+          <button id="btn-next" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer">
+            <span class="hidden sm:inline">Next</span>
+            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+          </button>
+          <button id="btn-complete" class="px-4 sm:px-6 py-2 bg-[#10b981] hover:bg-[#059669] text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer">
+            <i data-lucide="check-circle" class="w-4 h-4"></i>
+            <span>Mark Complete</span>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Loading Modal -->
+  <div id="loading-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 text-white">
+    <div class="bg-slate-900 border border-slate-700 p-8 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      <h3 class="text-lg font-black text-white">Unpacking Course</h3>
+      <p id="loading-status-text" class="text-xs text-slate-400">Reading package files...</p>
+    </div>
+  </div>
+
+  <!-- Hidden File Input -->
+  <input type="file" id="file-input" accept=".zip" class="hidden" />
+
+  <!-- JavaScript Logic -->
+  <script>
+    let currentCourse = null;
+    let currentLesson = null;
+    let completedLessonIds = [];
+    let allLessonsFlat = [];
+
+    // DOM Elements
+    const dropZoneView = document.getElementById("drop-zone-view");
+    const playerView = document.getElementById("player-view");
+    const dropArea = document.getElementById("drop-area");
+    const fileInput = document.getElementById("file-input");
+    const loadingModal = document.getElementById("loading-modal");
+    const loadingStatusText = document.getElementById("loading-status-text");
+    const errorMsg = document.getElementById("error-msg");
+    const modulesList = document.getElementById("modules-list");
+    const mediaStage = document.getElementById("media-stage");
+    const btnComplete = document.getElementById("btn-complete");
+    const btnPrev = document.getElementById("btn-prev");
+    const btnNext = document.getElementById("btn-next");
+    const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
+    const sidebar = document.getElementById("sidebar");
+    const btnLoadAnother = document.getElementById("btn-load-another");
+
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Drag & Drop
+    dropArea.addEventListener("click", () => fileInput.click());
+    btnLoadAnother.addEventListener("click", () => fileInput.click());
+
+    ["dragenter", "dragover"].forEach(eventName => {
+      dropArea.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropArea.classList.add("border-emerald-500", "bg-emerald-50/50");
+      });
+    });
+
+    ["dragleave", "drop"].forEach(eventName => {
+      dropArea.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropArea.classList.remove("border-emerald-500", "bg-emerald-50/50");
+      });
+    });
+
+    dropArea.addEventListener("drop", (e) => {
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleZipFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleZipFile(e.target.files[0]);
+      }
+    });
+
+    btnToggleSidebar.addEventListener("click", () => {
+      sidebar.classList.toggle("hidden");
+    });
+
+    // ZIP Processing Engine
+    async function handleZipFile(file) {
+      if (!file.name.toLowerCase().endsWith(".zip")) {
+        showError("Please select a valid .zip course file.");
+        return;
+      }
+
+      showLoading("Unpacking course package...");
+      try {
+        const zip = new JSZip();
+        const loadedZip = await zip.loadAsync(file);
+
+        // Find manifest
+        let manifestFile = loadedZip.file("course_manifest.json") || loadedZip.file(/course_manifest\.json$/)[0];
+
+        let courseData = {
+          title: file.name.replace(/\.zip$/i, ""),
+          modules: []
+        };
+
+        if (manifestFile) {
+          const manifestText = await manifestFile.async("text");
+          const manifest = JSON.parse(manifestText);
+          courseData.title = manifest.title || courseData.title;
+
+          const manifestDir = manifestFile.name.replace("course_manifest.json", "");
+
+          for (const m of manifest.modules || []) {
+            const lessons = [];
+            for (const l of m.lessons || []) {
+              let blobUrl = null;
+              let mimeType = "text/plain";
+
+              if (l.filePath) {
+                const fullPath = `${manifestDir}${l.filePath}`.replace(/^\//, "");
+                const entry = loadedZip.file(fullPath) || loadedZip.file(l.filePath);
+                if (entry) {
+                  const ext = fullPath.toLowerCase();
+                  if (ext.endsWith(".mp4")) mimeType = "video/mp4";
+                  else if (ext.endsWith(".webm")) mimeType = "video/webm";
+                  else if (ext.endsWith(".pdf")) mimeType = "application/pdf";
+                  
+                  const blob = await entry.async("blob");
+                  blobUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+                }
+              }
+
+              lessons.push({
+                id: l.id || `l-${Math.random()}`,
+                title: l.title || "Lesson",
+                type: l.type || (l.filePath && l.filePath.endsWith(".mp4") ? "video" : "note"),
+                blobUrl,
+                textContent: l.textContent || null
+              });
+            }
+
+            courseData.modules.push({
+              id: m.id || `m-${Math.random()}`,
+              title: m.title || "Module",
+              lessons
+            });
+          }
+        } else {
+          // Folder fallback
+          const moduleMap = {};
+          const entries = Object.keys(loadedZip.files).filter(p => !loadedZip.files[p].dir);
+
+          for (const path of entries) {
+            const parts = path.split("/").filter(Boolean);
+            if (parts.length === 0) continue;
+            const fileName = parts[parts.length - 1];
+            const modName = parts.length > 1 ? parts[parts.length - 2] : "Lessons";
+            const ext = fileName.toLowerCase();
+
+            if (fileName.startsWith(".")) continue;
+
+            let type = "note";
+            let mimeType = "text/plain";
+            if (ext.endsWith(".mp4") || ext.endsWith(".webm")) {
+              type = "video";
+              mimeType = ext.endsWith(".webm") ? "video/webm" : "video/mp4";
+            } else if (ext.endsWith(".pdf")) {
+              type = "note";
+              mimeType = "application/pdf";
+            }
+
+            const blob = await loadedZip.files[path].async("blob");
+            const blobUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+
+            if (!moduleMap[modName]) moduleMap[modName] = [];
+            moduleMap[modName].push({
+              id: `l-${Math.random()}`,
+              title: fileName.replace(/\.[^/.]+$/, "").replace(/^\d+[\s-_]*/, ""),
+              type,
+              blobUrl
+            });
+          }
+
+          courseData.modules = Object.keys(moduleMap).map((k, i) => ({
+            id: `m-${i}`,
+            title: k,
+            lessons: moduleMap[k]
+          }));
+        }
+
+        currentCourse = courseData;
+        allLessonsFlat = currentCourse.modules.flatMap(m => m.lessons);
+        renderPlayer();
+      } catch (err) {
+        console.error(err);
+        showError("Failed to unpack course ZIP. Please make sure this is a valid archive.");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function renderPlayer() {
+      dropZoneView.classList.add("hidden");
+      playerView.classList.remove("hidden");
+
+      document.getElementById("sidebar-course-title").textContent = currentCourse.title;
+      document.getElementById("top-course-title").textContent = currentCourse.title;
+
+      renderModules();
+      if (allLessonsFlat.length > 0) {
+        selectLesson(allLessonsFlat[0]);
+      }
+      lucide.createIcons();
+    }
+
+    function renderModules() {
+      modulesList.innerHTML = "";
+      currentCourse.modules.forEach((mod, idx) => {
+        const modEl = document.createElement("div");
+        modEl.className = "bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs";
+        
+        let lessonsHtml = mod.lessons.map(l => {
+          const isDone = completedLessonIds.includes(l.id);
+          const isActive = currentLesson && currentLesson.id === l.id;
+          return `
+            <button onclick="selectLessonById('${l.id}')" class="w-full flex items-center gap-2.5 p-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer ${isActive ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}">
+              <i data-lucide="${isDone ? 'check-circle' : l.type === 'video' ? 'play-circle' : 'file-text'}" class="w-4 h-4 shrink-0 ${isActive ? 'text-white' : isDone ? 'text-emerald-500' : 'text-slate-400'}"></i>
+              <span class="truncate flex-1">${l.title}</span>
+            </button>
+          `;
+        }).join("");
+
+        modEl.innerHTML = `
+          <div class="p-3.5 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
+            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Phase ${idx + 1}</span>
+            <span class="text-xs font-black text-slate-900 truncate">${mod.title}</span>
+          </div>
+          <div class="p-2 space-y-1">${lessonsHtml}</div>
+        `;
+        modulesList.appendChild(modEl);
+      });
+      lucide.createIcons();
+      updateCertificateStatus();
+    }
+
+    window.selectLessonById = function(id) {
+      const found = allLessonsFlat.find(l => l.id === id);
+      if (found) selectLesson(found);
+    };
+
+    function selectLesson(lesson) {
+      currentLesson = lesson;
+      document.getElementById("bottom-lesson-title").textContent = lesson.title;
+      document.getElementById("bottom-lesson-type").textContent = `${lesson.type.toUpperCase()} • OFFLINE`;
+
+      // Update active state in sidebar
+      renderModules();
+
+      // Render Stage
+      mediaStage.innerHTML = "";
+      if (lesson.type === "video") {
+        mediaStage.innerHTML = `
+          <div class="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl bg-black flex items-center justify-center">
+            ${lesson.blobUrl ? `<video src="${lesson.blobUrl}" controls autoplay class="w-full h-full object-contain"></video>` : '<span class="text-slate-400 font-bold">No Video Source</span>'}
+          </div>
+        `;
+      } else if (lesson.type === "note") {
+        mediaStage.innerHTML = `
+          <div class="w-full h-full max-w-5xl bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
+            <div class="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
+              <span>${lesson.title}</span>
+              ${lesson.blobUrl ? `<a href="${lesson.blobUrl}" target="_blank" class="px-3 py-1 bg-slate-800 rounded-lg text-slate-200 text-[11px] font-bold">Fullscreen</a>` : ''}
+            </div>
+            ${lesson.blobUrl ? `<iframe src="${lesson.blobUrl}#toolbar=1" class="w-full flex-1 border-0"></iframe>` : `<div class="p-8 text-slate-700 whitespace-pre-wrap font-medium">${lesson.textContent || 'No notes content.'}</div>`}
+          </div>
+        `;
+      }
+
+      // Update Complete Button Style
+      updateCompleteButton();
+      lucide.createIcons();
+    }
+
+    function updateCompleteButton() {
+      if (!currentLesson) return;
+      const isDone = completedLessonIds.includes(currentLesson.id);
+      if (isDone) {
+        btnComplete.className = "px-4 sm:px-6 py-2 bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer";
+        btnComplete.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i><span>Completed</span>`;
+      } else {
+        btnComplete.className = "px-4 sm:px-6 py-2 bg-[#10b981] hover:bg-[#059669] text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer";
+        btnComplete.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i><span>Mark Complete</span>`;
+      }
+      lucide.createIcons();
+    }
+
+    btnComplete.addEventListener("click", () => {
+      if (!currentLesson) return;
+      if (completedLessonIds.includes(currentLesson.id)) {
+        completedLessonIds = completedLessonIds.filter(id => id !== currentLesson.id);
+      } else {
+        completedLessonIds.push(currentLesson.id);
+      }
+      updateCompleteButton();
+      renderModules();
+    });
+
+    btnPrev.addEventListener("click", () => {
+      const idx = allLessonsFlat.findIndex(l => l.id === currentLesson?.id);
+      if (idx > 0) selectLesson(allLessonsFlat[idx - 1]);
+    });
+
+    btnNext.addEventListener("click", () => {
+      const idx = allLessonsFlat.findIndex(l => l.id === currentLesson?.id);
+      if (idx >= 0 && idx < allLessonsFlat.length - 1) selectLesson(allLessonsFlat[idx + 1]);
+    });
+
+    function updateCertificateStatus() {
+      const total = allLessonsFlat.length;
+      const done = completedLessonIds.length;
+      const isAllDone = total > 0 && done === total;
+
+      const certBox = document.getElementById("cert-box");
+      const certStatus = document.getElementById("cert-status");
+      const certLock = document.getElementById("cert-lock");
+      const certIcon = document.getElementById("cert-icon");
+
+      if (isAllDone) {
+        certBox.className = "p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between";
+        certIcon.className = "w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs";
+        certStatus.textContent = "UNLOCKED & MASTERED!";
+        certStatus.className = "text-[10px] font-black text-emerald-700";
+        certLock.innerHTML = `<i data-lucide="unlock" class="w-4 h-4 text-emerald-600"></i>`;
+      } else {
+        certBox.className = "p-4 rounded-2xl bg-white border border-slate-200 flex items-center justify-between";
+        certIcon.className = "w-8 h-8 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center";
+        certStatus.textContent = `${done}/${total} completed`;
+        certStatus.className = "text-[10px] font-bold text-slate-400";
+        certLock.innerHTML = `<i data-lucide="lock" class="w-4 h-4 text-slate-300"></i>`;
+      }
+      lucide.createIcons();
+    }
+
+    function showLoading(text) {
+      loadingStatusText.textContent = text;
+      loadingModal.classList.remove("hidden");
+    }
+
+    function hideLoading() {
+      loadingModal.classList.add("hidden");
+    }
+
+    function showError(text) {
+      errorMsg.textContent = text;
+      errorMsg.classList.remove("hidden");
+    }
+  </script>
+</body>
+</html>
