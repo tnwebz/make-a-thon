@@ -7,7 +7,7 @@ import {
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle,
   UploadCloud, CheckCircle, ChevronDown, ChevronRight, Lock,
   Unlock, Award, Play, ExternalLink, Download, Loader2, Sparkles,
-  Wifi, Eye, AlertCircle, RefreshCw, Maximize2
+  Wifi, Eye, AlertCircle, RefreshCw, Maximize2, BookOpen
 } from "lucide-react";
 
 interface LessonItem {
@@ -55,12 +55,24 @@ const SharedCourseViewer: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [activeLesson, setActiveLesson] = useState<LessonItem | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Default open on desktop (>=1024px), closed on mobile/tablet (<1024px)
+  const [sidebarOpen, setSidebarOpen] = useState(typeof window !== "undefined" ? window.innerWidth >= 1024 : true);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 1024 : false);
   const [expandedModules, setExpandedModules] = useState<number[]>([]);
   const [completedLessons, setCompletedLessons] = useState<number[]>([]);
   
   const [downloadingCourse, setDownloadingCourse] = useState(false);
   const [downloadingModuleId, setDownloadingModuleId] = useState<number | null>(null);
+
+  // Responsive window resize listener
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -113,6 +125,14 @@ const SharedCourseViewer: React.FC = () => {
     setExpandedModules(prev => 
       prev.includes(moduleId) ? prev.filter(id => id !== moduleId) : [...prev, moduleId]
     );
+  };
+
+  const handleSelectLesson = (lesson: LessonItem) => {
+    setActiveLesson(lesson);
+    // On mobile screens, auto-close drawer when lesson is selected
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
   };
 
   const handleMarkComplete = () => {
@@ -197,8 +217,9 @@ const SharedCourseViewer: React.FC = () => {
   const renderContent = () => {
     if (!activeLesson) {
       return (
-        <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase">
-          Select a lesson to begin
+        <div className="flex flex-col items-center justify-center h-full text-slate-400 font-bold p-6 text-center">
+          <BookOpen size={48} className="mb-3 opacity-40" />
+          <span className="tracking-widest uppercase text-xs sm:text-sm">Select a lesson to begin</span>
         </div>
       );
     }
@@ -210,32 +231,53 @@ const SharedCourseViewer: React.FC = () => {
       <div className="flex flex-col h-full bg-transparent w-full relative">
 
         {/* CENTER STAGE: Content Area */}
-        <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center w-full p-6 md:p-10">
+        <div className="flex-1 relative overflow-y-auto lg:overflow-hidden flex flex-col items-center justify-center w-full p-2.5 sm:p-5 md:p-8">
 
-          {/* 1. PDF / NOTES (Image 5 Style Embedded Viewer) */}
+          {/* 1. PDF / NOTES */}
           {(activeLesson.type === "note" || activeLesson.type === "assignment") && (
-            <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
+            <div className="w-full h-full min-h-[65vh] sm:min-h-[75vh] max-w-6xl rounded-2xl sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/70 bg-white flex flex-col mx-auto">
+              
+              {/* PDF Top Bar for mobile quick controls */}
+              <div className="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between text-xs font-semibold shrink-0">
+                <div className="flex items-center gap-2 truncate">
+                  <FileText size={15} className="text-amber-400 shrink-0" />
+                  <span className="truncate">{activeLesson.title}</span>
+                </div>
+                {mediaStreamUrl && (
+                  <a
+                    href={mediaStreamUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-[11px] font-bold shrink-0 transition-colors"
+                  >
+                    <Maximize2 size={13} />
+                    <span className="hidden xs:inline">Fullscreen / Download</span>
+                    <span className="xs:hidden">Open</span>
+                  </a>
+                )}
+              </div>
+
               {mediaStreamUrl ? (
                 <iframe
                   key={activeLesson.id}
                   src={`${mediaStreamUrl}#toolbar=1&navpanes=0`}
                   title={activeLesson.title}
-                  className="w-full h-full rounded-[1.5rem] border-0 bg-white"
+                  className="w-full flex-1 border-0 bg-white"
                 />
               ) : activeLesson.rawUrl ? (
                 <iframe
                   src={getEmbedUrl(activeLesson.rawUrl)}
                   title={activeLesson.title}
-                  className="w-full h-full rounded-[1.5rem] border-0 bg-white"
+                  className="w-full flex-1 border-0 bg-white"
                   allowFullScreen
                 />
               ) : (
-                <div className="p-8 sm:p-12 overflow-y-auto h-full bg-white rounded-[1.5rem]">
+                <div className="p-6 sm:p-10 overflow-y-auto flex-1 bg-white">
                   <div className="flex items-center gap-2 text-amber-600 text-xs font-black uppercase tracking-wider mb-4">
                     <FileText size={16} />
                     <span>Study Notes & Documentation</span>
                   </div>
-                  <div className="prose prose-slate max-w-none text-slate-700 text-base leading-relaxed whitespace-pre-wrap font-medium">
+                  <div className="prose prose-slate max-w-none text-slate-700 text-sm sm:text-base leading-relaxed whitespace-pre-wrap font-medium">
                     {activeLesson.textContent || activeLesson.instructions || "No written notes provided."}
                   </div>
                 </div>
@@ -243,20 +285,21 @@ const SharedCourseViewer: React.FC = () => {
             </div>
           )}
 
-          {/* 2. VIDEO PLAYER (Image 2 Style Video Stage) */}
+          {/* 2. VIDEO PLAYER */}
           {(activeLesson.type === "video" || activeLesson.type === "live_class") && (
-            <div className="w-full flex flex-col items-center justify-center h-full">
-              <div className="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative group">
+            <div className="w-full flex flex-col items-center justify-center h-full max-w-5xl">
+              <div className="w-full aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative group flex items-center justify-center">
                 
                 {/* Mode & Download Overlay Button */}
                 {course?.accessMode === "ALLOW_DOWNLOAD" && (
                   <button
                     onClick={handleDownloadCourse}
                     disabled={downloadingCourse}
-                    className="absolute top-4 right-4 z-50 px-4 py-2 bg-black/60 hover:bg-black/80 backdrop-blur text-white font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 disabled:opacity-100 shadow-xl border border-white/10"
+                    className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 px-3 py-1.5 sm:px-4 sm:py-2 bg-black/70 hover:bg-black/90 backdrop-blur text-white font-bold text-xs sm:text-sm rounded-xl transition-all flex items-center justify-center gap-2 shadow-xl border border-white/10 cursor-pointer"
                   >
-                    <Download size={16} />
-                    <span>{downloadingCourse ? "Downloading..." : "Download Offline"}</span>
+                    <Download size={14} />
+                    <span className="hidden xs:inline">{downloadingCourse ? "Downloading..." : "Download Course ZIP"}</span>
+                    <span className="xs:hidden">ZIP</span>
                   </button>
                 )}
 
@@ -290,7 +333,7 @@ const SharedCourseViewer: React.FC = () => {
                     allowFullScreen
                   />
                 ) : (
-                  <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase">
+                  <div className="flex items-center justify-center h-full text-slate-400 font-bold tracking-widest uppercase text-xs sm:text-sm">
                     Invalid Video Source
                   </div>
                 )}
@@ -300,13 +343,13 @@ const SharedCourseViewer: React.FC = () => {
 
           {/* 3. CODE TEST */}
           {activeLesson.type === "code_test" && (
-            <div className="w-full h-full max-w-5xl rounded-3xl overflow-hidden shadow-xl border border-slate-200/60 bg-white p-8">
-              <div className="flex items-center gap-2 text-indigo-600 text-xs font-black uppercase tracking-wider mb-4">
+            <div className="w-full h-full max-w-5xl rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border border-slate-200/60 bg-white p-5 sm:p-8">
+              <div className="flex items-center gap-2 text-indigo-600 text-xs font-black uppercase tracking-wider mb-3">
                 <Code size={16} />
                 <span>Code Challenge Overview</span>
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mb-3">{activeLesson.title}</h2>
-              <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-3">{activeLesson.title}</h2>
+              <div className="p-4 sm:p-6 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs sm:text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                 {activeLesson.instructions || "Follow instructor instructions to solve this problem."}
               </div>
             </div>
@@ -314,18 +357,18 @@ const SharedCourseViewer: React.FC = () => {
 
           {/* 4. QUIZ */}
           {activeLesson.type === "quiz" && (
-            <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
+            <div className="w-full h-full max-w-6xl rounded-2xl sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
               {activeLesson.rawUrl ? (
                 <iframe
                   src={getEmbedUrl(activeLesson.rawUrl)}
                   title={activeLesson.title}
-                  className="w-full h-full rounded-[1.5rem] border-0 bg-white"
+                  className="w-full h-full min-h-[60vh] rounded-[1.5rem] border-0 bg-white"
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-white rounded-[1.5rem]">
-                  <HelpCircle size={48} className="text-purple-500 mb-3" />
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">{activeLesson.title}</h3>
-                  <p className="text-slate-500 text-sm max-w-md">{activeLesson.instructions || "Complete this quiz as directed in class."}</p>
+                <div className="flex flex-col items-center justify-center h-full text-center p-6 sm:p-8 bg-white rounded-[1.5rem]">
+                  <HelpCircle size={40} className="text-purple-500 mb-3" />
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2">{activeLesson.title}</h3>
+                  <p className="text-slate-500 text-xs sm:text-sm max-w-md">{activeLesson.instructions || "Complete this quiz as directed in class."}</p>
                 </div>
               )}
             </div>
@@ -333,55 +376,65 @@ const SharedCourseViewer: React.FC = () => {
 
         </div>
 
-        {/* BOTTOM ACTION BAR (Image 2 Style) */}
-        <div className="h-28 bg-white/90 backdrop-blur-2xl border-t border-slate-200/60 flex items-center justify-between px-8 md:px-14 shrink-0 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.02)]">
-          <div>
-            <h3 className="text-slate-900 font-black text-2xl tracking-tight mb-1">{activeLesson.title}</h3>
-            <p className="text-slate-400 text-[11px] font-black uppercase tracking-widest">{activeLesson.type}</p>
+        {/* BOTTOM ACTION BAR: Responsive Layout */}
+        <div className="py-3 sm:py-4 md:py-6 bg-white/95 backdrop-blur-2xl border-t border-slate-200/70 flex items-center justify-between px-3 sm:px-6 md:px-12 shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] gap-2">
+          
+          {/* Lesson Metadata */}
+          <div className="min-w-0 flex-1 pr-2">
+            <h3 className="text-slate-900 font-black text-sm sm:text-lg md:text-2xl tracking-tight truncate">
+              {activeLesson.title}
+            </h3>
+            <p className="text-slate-400 text-[10px] sm:text-[11px] font-black uppercase tracking-widest truncate">
+              {activeLesson.type}
+            </p>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Prev / Next Navigation Buttons */}
+          {/* Action Controls */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+            {/* Prev Navigation Button */}
             {prevLesson && (
               <button
                 onClick={() => setActiveLesson(prevLesson)}
-                className="hidden sm:flex items-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition-colors"
+                className="flex items-center justify-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl sm:rounded-2xl text-xs transition-colors cursor-pointer"
                 title={prevLesson.title}
               >
                 <ChevronLeft size={16} />
-                <span>Prev</span>
+                <span className="hidden xs:inline">Prev</span>
               </button>
             )}
 
+            {/* Next Navigation Button */}
             {nextLesson && (
               <button
                 onClick={() => setActiveLesson(nextLesson)}
-                className="hidden sm:flex items-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition-colors"
+                className="flex items-center justify-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl sm:rounded-2xl text-xs transition-colors cursor-pointer"
                 title={nextLesson.title}
               >
-                <span>Next</span>
+                <span className="hidden xs:inline">Next</span>
                 <ChevronRight size={16} />
               </button>
             )}
 
-            {/* GREEN ACTION BUTTON (Matching Image 2) */}
+            {/* GREEN ACTION BUTTON */}
             <button
               onClick={handleMarkComplete}
-              className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black transition-all text-sm cursor-pointer ${
+              className={`flex items-center gap-1.5 sm:gap-2.5 px-3.5 sm:px-6 md:px-8 py-2.5 sm:py-3.5 md:py-4 rounded-xl sm:rounded-2xl font-black transition-all text-xs sm:text-sm cursor-pointer shrink-0 ${
                 isDone 
                   ? "bg-green-50 border border-green-200 text-green-600 shadow-xs" 
-                  : "bg-[#10b981] hover:bg-[#059669] text-white shadow-lg shadow-emerald-500/20 active:scale-95"
+                  : "bg-[#10b981] hover:bg-[#059669] text-white shadow-md shadow-emerald-500/20 active:scale-95"
               }`}
             >
               {isDone ? (
                 <>
-                  <CheckCircle size={20} className="text-emerald-500" />
-                  <span>Module Completed</span>
+                  <CheckCircle size={16} className="text-emerald-500 shrink-0" />
+                  <span className="hidden xs:inline">Completed</span>
+                  <span className="xs:hidden">Done</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle size={20} />
-                  <span>Mark as Complete</span>
+                  <CheckCircle size={16} className="shrink-0" />
+                  <span className="hidden xs:inline">Mark as Complete</span>
+                  <span className="xs:hidden">Complete</span>
                 </>
               )}
             </button>
@@ -404,13 +457,13 @@ const SharedCourseViewer: React.FC = () => {
   if (errorMsg || !course) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-6 text-center">
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-8 max-w-md shadow-sm space-y-4">
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 max-w-md shadow-sm space-y-4 mx-4">
           <AlertCircle size={40} className="text-red-500 mx-auto" />
           <h2 className="text-xl font-bold text-slate-900">Access Error</h2>
           <p className="text-sm text-slate-500">{errorMsg || "Unable to find course details."}</p>
           <button
             onClick={() => navigate(`/share/${codeUpper}`)}
-            className="w-full bg-slate-900 text-white font-bold py-3 rounded-2xl text-sm hover:bg-slate-800 transition-colors"
+            className="w-full bg-slate-900 text-white font-bold py-3 rounded-2xl text-sm hover:bg-slate-800 transition-colors cursor-pointer"
           >
             Return to Gateway
           </button>
@@ -419,176 +472,256 @@ const SharedCourseViewer: React.FC = () => {
     );
   }
 
-  return (
-    <div className="flex h-screen w-screen overflow-hidden font-sans bg-[#f8fafc] text-slate-900 selection:bg-emerald-500 selection:text-white relative">
+  // Common Sidebar Content Component
+  const renderSidebarContent = () => (
+    <div className="flex flex-col h-full bg-white/95 backdrop-blur-3xl">
+      {/* Top Bar: Exit Player */}
+      <div className="pt-6 pb-4 px-6 shrink-0 flex items-center justify-between border-b border-slate-100">
+        <button
+          onClick={() => navigate(`/share/${codeUpper}`)}
+          className="flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900 transition-colors font-bold text-xs sm:text-sm bg-white border border-slate-200 px-4 py-2.5 rounded-2xl shadow-xs hover:bg-slate-50 cursor-pointer"
+        >
+          <ChevronLeft size={16} />
+          <span>Exit Player</span>
+        </button>
 
-      {/* 🎨 THEME: Crisp Glass Background Ornaments */}
+        <div className="flex items-center gap-2">
+          {course.accessMode === "ALLOW_DOWNLOAD" && (
+            <button
+              onClick={handleDownloadCourse}
+              disabled={downloadingCourse}
+              className="p-2 text-indigo-600 hover:bg-indigo-50 border border-indigo-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+              title="Download full course as ZIP"
+            >
+              <Download size={15} />
+              <span className="hidden sm:inline">ZIP</span>
+            </button>
+          )}
+
+          {/* Close drawer button on mobile */}
+          {isMobile && (
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              title="Close Curriculum"
+            >
+              <ChevronLeft size={20} className="rotate-180" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Modules List */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
+        {course.modules?.map((module, idx) => {
+          const isExpanded = expandedModules.includes(module.id);
+          const moduleComplete = isModuleComplete(module);
+
+          return (
+            <div key={module.id} className="bg-white border border-slate-200/70 rounded-2xl sm:rounded-3xl overflow-hidden shadow-xs">
+              <button
+                onClick={() => toggleModule(module.id)}
+                className="w-full p-4 sm:p-5 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer text-left"
+              >
+                <div className="flex-1 pr-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      Phase {idx + 1}
+                    </span>
+                    {moduleComplete && <CheckCircle size={13} className="text-emerald-500" />}
+                  </div>
+                  <div className={`text-sm sm:text-base font-black tracking-tight ${moduleComplete ? "text-slate-400" : "text-slate-900"}`}>
+                    {module.title}
+                  </div>
+                </div>
+                {isExpanded ? (
+                  <ChevronDown size={18} className="text-slate-400 shrink-0" />
+                ) : (
+                  <ChevronRight size={18} className="text-slate-400 shrink-0" />
+                )}
+              </button>
+
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{ height: "auto" }}
+                    exit={{ height: 0 }}
+                    className="overflow-hidden bg-slate-50/60 border-t border-slate-100"
+                  >
+                    <div className="p-2 sm:p-3 space-y-1">
+                      {module.lessons?.map((lesson) => {
+                        const isActive = activeLesson?.id === lesson.id;
+                        const isLessonDone = completedLessons.includes(lesson.id);
+
+                        return (
+                          <button
+                            key={lesson.id}
+                            onClick={() => handleSelectLesson(lesson)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl sm:rounded-2xl transition-all cursor-pointer ${
+                              isActive
+                                ? "bg-white shadow-xs border border-slate-200 text-slate-900"
+                                : "hover:bg-slate-100/80 border border-transparent text-slate-500"
+                            }`}
+                          >
+                            <div className={`${isActive ? "text-slate-900" : isLessonDone ? "text-emerald-500" : "text-slate-400"}`}>
+                              {isLessonDone ? (
+                                <CheckCircle size={16} />
+                              ) : lesson.type === "video" || lesson.type === "live_class" ? (
+                                <PlayCircle size={16} />
+                              ) : lesson.type === "note" ? (
+                                <FileText size={16} />
+                              ) : lesson.type === "quiz" ? (
+                                <HelpCircle size={16} />
+                              ) : (
+                                <UploadCloud size={16} />
+                              )}
+                            </div>
+                            <div className={`text-xs sm:text-sm text-left truncate flex-1 font-bold ${isActive ? "text-slate-900" : "text-slate-600"}`}>
+                              {lesson.title}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* THE CERTIFICATE GATE */}
+      <div className="p-4 sm:p-6 shrink-0 bg-white border-t border-slate-200/60">
+        <div className={`relative overflow-hidden rounded-2xl sm:rounded-3xl p-4 sm:p-5 border ${isCourseComplete ? "border-green-200 bg-green-50 shadow-xs" : "border-slate-100 bg-slate-50"} transition-all`}>
+          <div className="relative z-10">
+            <h4 className={`font-black mb-1 flex items-center gap-2 text-sm sm:text-base ${isCourseComplete ? "text-green-700" : "text-slate-700"}`}>
+              <Award size={18} /> Course Certificate
+            </h4>
+            <p className="text-[10px] text-slate-400 font-bold mb-4 uppercase tracking-widest">
+              {isCourseComplete ? "UNLOCKED & READY" : "COMPLETE ALL MODULES"}
+            </p>
+            
+            <button
+              disabled={!isCourseComplete}
+              className={`w-full py-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition-all ${
+                isCourseComplete
+                  ? "bg-[#10b981] text-white hover:bg-[#059669] shadow-md shadow-emerald-500/20 cursor-pointer"
+                  : "bg-white border border-slate-200 text-slate-400 cursor-not-allowed shadow-xs"
+              }`}
+            >
+              {isCourseComplete ? (
+                <>
+                  <Unlock size={16} /> Completed All Modules
+                </>
+              ) : (
+                <>
+                  <Lock size={16} /> Locked
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex h-[100dvh] w-screen overflow-hidden font-sans bg-[#f8fafc] text-slate-900 selection:bg-emerald-500 selection:text-white relative">
+
+      {/* Background Ornaments */}
       <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-white rounded-full blur-[150px] pointer-events-none opacity-80" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[70%] h-[70%] bg-slate-200/50 rounded-full blur-[180px] pointer-events-none" />
 
-      {/* LEFT SIDEBAR (Matching Image 2 Layout) */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 380, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            className="flex flex-col h-full bg-white/80 backdrop-blur-3xl border-r border-slate-200/60 z-30 shrink-0 relative shadow-2xl"
-          >
-            {/* Top Bar: Exit Player */}
-            <div className="pt-8 pb-4 px-8 shrink-0 flex items-center justify-between">
-              <button
-                onClick={() => navigate(`/share/${codeUpper}`)}
-                className="flex items-center justify-center gap-3 text-slate-500 hover:text-slate-900 transition-colors font-bold text-sm bg-white border border-slate-200 px-5 py-3 rounded-2xl shadow-sm hover:bg-slate-50 cursor-pointer"
+      {/* 1. DESKTOP SIDEBAR (>= 1024px) */}
+      {!isMobile && (
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.div
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: 360, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              className="flex flex-col h-full border-r border-slate-200/60 z-30 shrink-0 relative shadow-xl overflow-hidden"
+            >
+              {renderSidebarContent()}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      {/* 2. MOBILE / TABLET OVERLAY DRAWER (< 1024px) */}
+      {isMobile && (
+        <AnimatePresence>
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-50 flex">
+              {/* Darkened Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSidebarOpen(false)}
+                className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+              />
+
+              {/* Slide-out Drawer */}
+              <motion.div
+                initial={{ x: "-100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "-100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 280 }}
+                className="relative w-[85vw] max-w-[340px] h-full z-50 shadow-2xl border-r border-slate-200"
               >
-                <ChevronLeft size={18} />
-                <span>Exit Player</span>
-              </button>
-
-              {course.accessMode === "ALLOW_DOWNLOAD" && (
-                <button
-                  onClick={handleDownloadCourse}
-                  disabled={downloadingCourse}
-                  className="p-2 text-indigo-600 hover:bg-indigo-50 border border-indigo-200 rounded-2xl transition-colors cursor-pointer"
-                  title="Download full course as ZIP"
-                >
-                  <Download size={18} />
-                </button>
-              )}
+                {renderSidebarContent()}
+              </motion.div>
             </div>
-
-            {/* Modules List (Matching Phase 1 / Phase 2 Card Style) */}
-            <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-              {course.modules?.map((module, idx) => {
-                const isExpanded = expandedModules.includes(module.id);
-                const moduleComplete = isModuleComplete(module);
-
-                return (
-                  <div key={module.id} className="bg-white border border-slate-200/60 rounded-3xl overflow-hidden shadow-sm">
-                    <button
-                      onClick={() => toggleModule(module.id)}
-                      className="w-full p-6 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer"
-                    >
-                      <div className="text-left flex-1 pr-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            Phase {idx + 1}
-                          </span>
-                          {moduleComplete && <CheckCircle size={14} className="text-emerald-500" />}
-                        </div>
-                        <div className={`text-base font-black tracking-tight ${moduleComplete ? "text-slate-400" : "text-slate-900"}`}>
-                          {module.title}
-                        </div>
-                      </div>
-                      {isExpanded ? (
-                        <ChevronDown size={20} className="text-slate-400 shrink-0" />
-                      ) : (
-                        <ChevronRight size={20} className="text-slate-400 shrink-0" />
-                      )}
-                    </button>
-
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: "auto" }}
-                          exit={{ height: 0 }}
-                          className="overflow-hidden bg-slate-50/50 border-t border-slate-100"
-                        >
-                          <div className="p-3 space-y-1.5">
-                            {module.lessons?.map((lesson) => {
-                              const isActive = activeLesson?.id === lesson.id;
-                              const isLessonDone = completedLessons.includes(lesson.id);
-
-                              return (
-                                <button
-                                  key={lesson.id}
-                                  onClick={() => setActiveLesson(lesson)}
-                                  className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all cursor-pointer ${
-                                    isActive
-                                      ? "bg-white shadow-[0_2px_10px_rgba(0,0,0,0.05)] border border-slate-200 text-slate-900"
-                                      : "hover:bg-slate-100 border border-transparent text-slate-500"
-                                  }`}
-                                >
-                                  <div className={`${isActive ? "text-slate-900" : isLessonDone ? "text-emerald-500" : "text-slate-400"}`}>
-                                    {isLessonDone ? (
-                                      <CheckCircle size={18} />
-                                    ) : lesson.type === "video" || lesson.type === "live_class" ? (
-                                      <PlayCircle size={18} />
-                                    ) : lesson.type === "note" ? (
-                                      <FileText size={18} />
-                                    ) : lesson.type === "quiz" ? (
-                                      <HelpCircle size={18} />
-                                    ) : (
-                                      <UploadCloud size={18} />
-                                    )}
-                                  </div>
-                                  <div className={`text-sm text-left truncate flex-1 font-bold ${isActive ? "text-slate-900" : "text-slate-500"}`}>
-                                    {lesson.title}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* THE CERTIFICATE GATE (Matching Image 2 Bottom Card) */}
-            <div className="p-8 shrink-0 bg-white border-t border-slate-200/60">
-              <div className={`relative overflow-hidden rounded-3xl p-6 border ${isCourseComplete ? "border-green-200 bg-green-50 shadow-sm" : "border-slate-100 bg-slate-50"} transition-all`}>
-                <div className="relative z-10">
-                  <h4 className={`font-black mb-2 flex items-center gap-3 text-base ${isCourseComplete ? "text-green-700" : "text-slate-700"}`}>
-                    <Award size={20} /> Course Certificate
-                  </h4>
-                  <p className="text-[10px] text-slate-400 font-bold mb-6 uppercase tracking-widest">
-                    {isCourseComplete ? "UNLOCKED & READY" : "COMPLETE ALL MODULES"}
-                  </p>
-                  
-                  <button
-                    disabled={!isCourseComplete}
-                    className={`w-full py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-3 transition-all ${
-                      isCourseComplete
-                        ? "bg-[#10b981] text-white hover:bg-[#059669] shadow-md shadow-emerald-500/20 cursor-pointer"
-                        : "bg-white border border-slate-200 text-slate-400 cursor-not-allowed shadow-sm"
-                    }`}
-                  >
-                    {isCourseComplete ? (
-                      <>
-                        <Unlock size={18} /> Completed All Modules
-                      </>
-                    ) : (
-                      <>
-                        <Lock size={18} /> Locked
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      )}
 
       {/* RIGHT MAIN VIEW */}
-      <div className="flex-1 flex flex-col relative z-20 overflow-hidden">
-        {/* Floating Menu Toggle */}
-        <div className="absolute top-8 left-8 z-30">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-3 bg-white/80 backdrop-blur-2xl rounded-2xl border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-white transition-colors shadow-sm cursor-pointer"
-            title="Toggle Curriculum Sidebar"
-          >
-            <Menu size={20} />
-          </button>
+      <div className="flex-1 flex flex-col relative z-20 overflow-hidden h-full">
+        
+        {/* Top Navbar / Floating Toggle Header */}
+        <div className="p-3 sm:p-4 md:p-6 pb-0 flex items-center justify-between shrink-0 z-30">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="flex items-center gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 bg-white/90 backdrop-blur-2xl rounded-xl sm:rounded-2xl border border-slate-200/80 text-slate-700 hover:text-slate-900 hover:bg-white transition-all shadow-xs cursor-pointer text-xs sm:text-sm font-bold"
+              title="Toggle Curriculum Sidebar"
+            >
+              <Menu size={18} />
+              <span className="hidden xs:inline">Modules</span>
+            </button>
+
+            {/* Course Title Badge */}
+            <div className="hidden sm:flex items-center gap-2 bg-slate-100/80 border border-slate-200/60 px-3.5 py-1.5 rounded-full text-xs font-extrabold text-slate-700 max-w-[200px] md:max-w-xs truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <span className="truncate">{course.title}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Offline Badge */}
+            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
+              <Wifi size={12} className="shrink-0" />
+              <span className="hidden xs:inline">Local LAN</span>
+            </div>
+
+            {/* Exit button for fast access */}
+            <button
+              onClick={() => navigate(`/share/${codeUpper}`)}
+              className="p-2 sm:px-3 sm:py-1.5 text-slate-500 hover:text-slate-900 bg-white border border-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+              title="Exit to Gateway"
+            >
+              <ChevronLeft size={15} />
+              <span className="hidden sm:inline">Exit</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 h-full pt-0 overflow-hidden">
+        {/* Content Render Stage */}
+        <div className="flex-1 h-full overflow-hidden">
           {renderContent()}
         </div>
       </div>
