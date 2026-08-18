@@ -16,27 +16,8 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
   const { canInstall, isInstalled, triggerInstall } = usePwaInstall();
   const [downloadTriggered, setDownloadTriggered] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
-  const [showManualGuide, setShowManualGuide] = useState(false);
-
   const handleInstallAppPWA = async () => {
-    if (isInstalled) {
-      window.open("/offline-player", "_blank");
-      onClose();
-      return;
-    }
-
-    const outcome = await triggerInstall();
-    if (outcome === "accepted") {
-      setInstallSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    } else {
-      setShowManualGuide(true);
-    }
-  };
-
-  const handleDownloadAppFile = () => {
+    // 1. Immediately trigger the direct file download of the offline app
     const link = document.createElement("a");
     link.href = "/SkillForge-Offline-Player.html";
     link.download = "SkillForge-Offline-Player.html";
@@ -45,6 +26,21 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
     document.body.removeChild(link);
 
     setDownloadTriggered(true);
+
+    // 2. Also trigger native browser install prompt if available
+    try {
+      const outcome = await triggerInstall();
+      if (outcome === "accepted") {
+        setInstallSuccess(true);
+        setTimeout(() => {
+          onClose();
+        }, 2000);
+      }
+    } catch (e) {}
+  };
+
+  const handleDownloadAppFile = () => {
+    handleInstallAppPWA();
   };
 
   const handleOpenWebPlayer = () => {
@@ -149,29 +145,14 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
 
                 {/* Download / Installed Notification Banner */}
                 {downloadTriggered && (
-                  <div className="mb-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 animate-fadeIn">
+                  <div className="mb-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1 animate-fadeIn">
                     <div className="font-black flex items-center gap-1.5 text-emerald-700">
                       <CheckCircle2 size={16} />
-                      <span>Downloading SkillForge-Offline-Player.html!</span>
+                      <span>App Downloaded Successfully!</span>
                     </div>
-                    <p className="text-slate-600 pl-5 text-[11px]">
-                      Save to your Desktop or USB. Double-click the file anytime to use 100% offline without internet.
+                    <p className="text-slate-600 pl-5 text-[11px] leading-relaxed">
+                      Simply double-click <strong>SkillForge-Offline-Player.html</strong> on your Desktop or Mobile to launch and use 100% offline anytime without internet!
                     </p>
-                  </div>
-                )}
-
-                {/* Manual Browser Guide (If prompt wasn't triggered automatically) */}
-                {showManualGuide && (
-                  <div className="mb-4 p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-xs text-indigo-900 space-y-2">
-                    <div className="font-extrabold flex items-center gap-1.5">
-                      <HelpCircle size={15} className="text-indigo-600" />
-                      <span>How to Install on Desktop & Mobile:</span>
-                    </div>
-                    <ul className="space-y-1 text-slate-600 pl-1 text-[11px] leading-relaxed">
-                      <li>• <strong>Desktop:</strong> Look at your browser address bar (top right) & click <strong>Install app (⊕)</strong>.</li>
-                      <li>• <strong>Mobile (iPhone):</strong> Tap <strong>Share (⎋)</strong> in Safari → <strong>Add to Home Screen (+)</strong>.</li>
-                      <li>• <strong>Mobile (Android):</strong> Tap <strong>(⋮)</strong> in Chrome → <strong>Install app</strong>.</li>
-                    </ul>
                   </div>
                 )}
 
@@ -179,34 +160,26 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                 <div className="space-y-2 pt-1">
                   <button
                     onClick={handleInstallAppPWA}
-                    className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
+                    className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
                   >
-                    <Download size={16} />
-                    <span>{isInstalled ? "Launch Desktop App" : "Install App to Desktop / Mobile (PWA)"}</span>
-                  </button>
-
-                  <button
-                    onClick={handleDownloadAppFile}
-                    className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                  >
-                    <Laptop size={15} />
-                    <span>Download Standalone File (.html)</span>
+                    <Download size={18} />
+                    <span>Install App to Desktop / Mobile (PWA)</span>
                   </button>
 
                   <button
                     onClick={handleOpenWebPlayer}
-                    className="w-full h-10 rounded-2xl text-slate-500 hover:text-slate-800 hover:bg-slate-50 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <span>Open Standalone Web Player</span>
-                    <ExternalLink size={13} />
+                    <ExternalLink size={14} />
                   </button>
                 </div>
               </>
             )}
 
             {/* Footer note */}
-            <p className="text-[10px] text-slate-400 text-center font-medium mt-3">
-              Works across Windows, macOS, Linux, Android, and iOS.
+            <p className="text-[11px] text-slate-400 text-center font-medium mt-4">
+              1-Click Automatic Download • Works on Windows, Mac, Android & iOS.
             </p>
           </motion.div>
         </div>
