@@ -2,57 +2,112 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SkillForge Offline Course Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SkillForge Offline Player</title>
+  
+  <!-- PWA Metadata & Manifest -->
+  <link rel="manifest" href="/manifest-player.json" />
+  <meta name="theme-color" content="#09090b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SkillForge Player" />
+  
+  <!-- Logos & Favicons -->
+  <link rel="icon" type="image/png" href="/pwa-192x192.png" />
+  <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google Fonts -->
+  
+  <!-- Google Fonts: Inter + Syne -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  
   <!-- JSZip CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+
   <style>
-    body { font-family: 'Inter', sans-serif; }
-    h1, h2, h3, h4, .font-heading { font-family: 'Inter', sans-serif; }
-    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    h1, h2, h3, h4 { font-family: 'Inter', sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 999px; }
+    @keyframes pulse-glow {
+      0%, 100% { transform: scale(1); box-shadow: 0 10px 25px rgba(5, 150, 105, 0.2); }
+      50% { transform: scale(1.03); box-shadow: 0 15px 35px rgba(5, 150, 105, 0.35); }
+    }
+    .glowing-plus { animation: pulse-glow 3s infinite ease-in-out; }
   </style>
 </head>
-<body class="bg-[#f8fafc] text-slate-900 select-none overflow-hidden h-screen w-screen flex flex-col">
+<body class="bg-[#f8fafc] text-slate-900 select-none overflow-hidden h-[100dvh] w-screen flex flex-col">
 
-  <!-- ================= EMPTY STATE / DROP ZONE ================= -->
-  <div id="drop-zone-view" class="flex-1 flex flex-col justify-between items-center p-6 sm:p-10 relative overflow-y-auto">
-    <!-- Background Glow -->
-    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-[450px] pointer-events-none opacity-60"
-         style="background: radial-gradient(circle at 50% 15%, rgba(5, 150, 105, 0.09) 0%, rgba(248, 250, 252, 0) 70%);"></div>
+  <!-- ================= TOP PWA INSTALL PROMPT BAR ================= -->
+  <div id="pwa-install-banner" class="hidden bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between z-50 text-xs shadow-md shrink-0 border-b border-slate-800">
+    <div class="flex items-center gap-2.5">
+      <img src="/pwa-192x192.png" alt="SkillForge" class="w-6 h-6 rounded-lg shadow-sm" />
+      <div>
+        <span class="font-bold">Install SkillForge App</span>
+        <span class="text-slate-400 hidden sm:inline"> • Add to Desktop or Mobile Home Screen for 1-click offline access</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btn-banner-install" class="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg text-[11px] shadow-xs cursor-pointer flex items-center gap-1 transition-colors">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>Install</span>
+      </button>
+      <button id="btn-banner-close" class="p-1 text-slate-400 hover:text-white rounded-md cursor-pointer">
+        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+  </div>
 
-    <!-- Header -->
-    <header class="w-full max-w-4xl flex items-center justify-between z-10">
+  <!-- ================= EMPTY STATE / DROP ZONE VIEW ================= -->
+  <div id="drop-zone-view" class="flex-1 flex flex-col justify-between items-center p-4 sm:p-8 md:p-10 relative overflow-y-auto">
+    <!-- Atmospheric Radial Glow -->
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-[450px] pointer-events-none opacity-70"
+         style="background: radial-gradient(circle at 50% 15%, rgba(5, 150, 105, 0.1) 0%, rgba(248, 250, 252, 0) 70%);"></div>
+
+    <!-- Top Header -->
+    <header class="w-full max-w-4xl flex items-center justify-between z-10 pt-2">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-xl shadow-sm">
-          S
-        </div>
+        <img src="/pwa-192x192.png" alt="SkillForge Logo" class="w-11 h-11 rounded-2xl shadow-md border border-slate-200" />
         <div>
-          <h1 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">SkillForge Offline</h1>
-          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none">Standalone Desktop Player</span>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-black text-slate-900 tracking-tight">SkillForge</h1>
+            <span class="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+              PWA App
+            </span>
+          </div>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-none">
+            Standalone Offline Course Player
+          </span>
         </div>
       </div>
-      <div class="flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full text-xs font-bold shadow-xs">
-        <i data-lucide="shield-check" class="w-4 h-4"></i>
-        <span>100% Offline App</span>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-header-install" class="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 sm:px-4 py-2 rounded-2xl text-xs font-bold shadow-md cursor-pointer transition-all active:scale-95">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span class="hidden xs:inline">Install App</span>
+          <span class="xs:hidden">Install</span>
+        </button>
+
+        <div class="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-2xl text-xs font-bold shadow-xs">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+          <span class="hidden sm:inline">100% Offline</span>
+        </div>
       </div>
     </header>
 
     <!-- Main '+' Drop Zone Card -->
     <main class="w-full max-w-xl my-auto py-6 z-10">
-      <div id="drop-area" class="bg-white/80 backdrop-blur-2xl border-2 border-dashed border-slate-300 hover:border-slate-900 rounded-[2.5rem] p-8 sm:p-12 text-center shadow-[0_20px_60px_rgba(0,0,0,0.03)] cursor-pointer group transition-all space-y-6 relative overflow-hidden">
+      <div id="drop-area" class="bg-white/90 backdrop-blur-2xl border-2 border-dashed border-slate-300 hover:border-slate-900 rounded-[2.5rem] p-6 sm:p-12 text-center shadow-[0_20px_60px_rgba(0,0,0,0.04)] cursor-pointer group transition-all space-y-6 relative overflow-hidden">
         
         <!-- Center Glowing '+' Icon -->
-        <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900 group-hover:bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-xl shadow-slate-900/10 group-hover:shadow-emerald-500/30 transition-all group-hover:scale-105 duration-300">
+        <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-slate-900 group-hover:bg-emerald-600 text-white mx-auto flex items-center justify-center shadow-xl shadow-slate-900/10 group-hover:shadow-emerald-500/30 transition-all duration-300 glowing-plus">
           <i data-lucide="plus" class="w-12 h-12 stroke-[2.5]"></i>
         </div>
 
@@ -60,48 +115,59 @@
           <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-2">
             Drop Course ZIP Here
           </h2>
-          <p class="text-sm text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
-            Drag and drop your downloaded course package, or click anywhere to select the <span class="font-mono font-bold text-slate-700">.zip</span> file.
+          <p class="text-xs sm:text-sm text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
+            Drag and drop your downloaded course package, or tap anywhere to select the <span class="font-mono font-bold text-slate-700">.zip</span> file from your device.
           </p>
         </div>
 
         <div id="error-msg" class="hidden bg-red-50 border border-red-200 text-red-700 text-xs font-semibold p-3 rounded-2xl"></div>
 
-        <div class="pt-2 flex justify-center">
-          <button type="button" class="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer">
-            <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+        <div class="pt-2 flex flex-wrap justify-center gap-3">
+          <button type="button" class="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95">
+            <i data-lucide="upload-cloud" class="w-4 h-4 text-emerald-400"></i>
             <span>Select Course ZIP</span>
           </button>
         </div>
 
         <div class="pt-4 border-t border-slate-100 flex items-center justify-center gap-6 text-[11px] font-bold text-slate-400">
-          <span>⚡ Zero Internet Required</span>
-          <span>🔒 Stored Directly on Device</span>
+          <span class="flex items-center gap-1"><i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500"></i> Zero Internet Required</span>
+          <span class="flex items-center gap-1"><i data-lucide="hard-drive" class="w-3.5 h-3.5 text-indigo-500"></i> Stored on Device</span>
         </div>
       </div>
     </main>
 
     <!-- Footer -->
-    <footer class="w-full max-w-4xl text-center text-xs text-slate-400 font-medium z-10">
-      SkillForge Standalone Portable Player &copy; 2026 • Portable HTML5 App
+    <footer class="w-full max-w-4xl text-center text-xs text-slate-400 font-medium z-10 pb-2">
+      SkillForge Standalone PWA App &copy; 2026 • Windows, Mac, Linux, Android & iOS Ready
     </footer>
   </div>
 
-  <!-- ================= PLAYER VIEW (HIDDEN INITIALLY) ================= -->
+  <!-- ================= PLAYER VIEW ================= -->
   <div id="player-view" class="hidden flex-1 flex overflow-hidden w-full h-full relative">
     
+    <!-- MOBILE DRAWER BACKDROP -->
+    <div id="sidebar-backdrop" class="hidden fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs lg:hidden"></div>
+
     <!-- LEFT SIDEBAR CURRICULUM -->
-    <aside id="sidebar" class="w-80 sm:w-96 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 z-30 transition-all duration-300">
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-[340px] lg:static lg:w-80 xl:w-96 bg-white border-r border-slate-200 flex flex-col h-full shrink-0 shadow-2xl lg:shadow-none transition-transform duration-300 -translate-x-full lg:translate-x-0">
       <!-- Sidebar Header -->
       <div class="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
-        <div>
-          <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Offline Course</span>
-          <h2 id="sidebar-course-title" class="text-base font-black text-slate-900 truncate max-w-[220px]">Course</h2>
+        <div class="flex items-center gap-2.5">
+          <img src="/pwa-192x192.png" alt="Logo" class="w-7 h-7 rounded-lg" />
+          <div class="truncate">
+            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest block leading-none">Course</span>
+            <h2 id="sidebar-course-title" class="text-sm sm:text-base font-black text-slate-900 truncate max-w-[180px]">Course</h2>
+          </div>
         </div>
-        <button id="btn-load-another" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl border border-emerald-200 text-xs font-bold flex items-center gap-1 cursor-pointer" title="Load another ZIP">
-          <i data-lucide="plus" class="w-4 h-4"></i>
-          <span class="hidden sm:inline">New ZIP</span>
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button id="btn-load-another" class="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl border border-emerald-200 text-xs font-bold flex items-center gap-1 cursor-pointer" title="Load another ZIP">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Add ZIP</span>
+          </button>
+          <button id="btn-close-sidebar" class="p-2 text-slate-400 hover:text-slate-700 rounded-xl lg:hidden cursor-pointer">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
       </div>
 
       <!-- Modules Accordion -->
@@ -131,50 +197,56 @@
     <!-- RIGHT CONTENT AREA -->
     <main class="flex-1 flex flex-col h-full bg-[#f8fafc] overflow-hidden relative">
       <!-- Top Bar -->
-      <div class="p-4 sm:p-6 pb-2 flex items-center justify-between shrink-0 z-20">
-        <div class="flex items-center gap-3">
-          <button id="btn-toggle-sidebar" class="p-2 sm:px-3 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs flex items-center gap-1.5 cursor-pointer">
+      <div class="p-3 sm:p-4 md:p-6 pb-0 flex items-center justify-between shrink-0 z-20">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <button id="btn-toggle-sidebar" class="p-2 sm:px-3 sm:py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-xs flex items-center gap-1.5 cursor-pointer hover:bg-slate-50">
             <i data-lucide="menu" class="w-4 h-4"></i>
-            <span class="hidden sm:inline">Modules</span>
+            <span>Modules</span>
           </button>
-          <div id="badge-course" class="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-full text-xs font-black text-slate-800 shadow-xs max-w-xs truncate">
+          <div id="badge-course" class="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-full text-xs font-black text-slate-800 shadow-xs max-w-[180px] sm:max-w-xs truncate">
             <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
             <span id="top-course-title" class="truncate">Course</span>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
+          <button id="btn-player-install" class="hidden flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs cursor-pointer">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Install App</span>
+          </button>
+
           <div class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1">
             <i data-lucide="hard-drive" class="w-3.5 h-3.5"></i>
-            <span>Local Disk</span>
+            <span class="hidden xs:inline">Offline Mode</span>
           </div>
         </div>
       </div>
 
       <!-- Media Stage -->
-      <div id="media-stage" class="flex-1 flex flex-col items-center justify-center p-3 sm:p-6 overflow-hidden">
+      <div id="media-stage" class="flex-1 flex flex-col items-center justify-center p-2.5 sm:p-5 md:p-8 overflow-y-auto lg:overflow-hidden">
         <!-- Rendered dynamically (Video or PDF or Text) -->
       </div>
 
       <!-- Bottom Navigation Dock -->
-      <div class="py-3 sm:py-4 px-4 sm:px-8 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-between shrink-0 shadow-sm">
-        <div class="min-w-0 pr-4">
-          <h3 id="bottom-lesson-title" class="text-sm sm:text-base font-black text-slate-900 truncate">Lesson Title</h3>
-          <p id="bottom-lesson-type" class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lesson Type</p>
+      <div class="py-3 sm:py-4 px-3 sm:px-8 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-between shrink-0 shadow-sm gap-2">
+        <div class="min-w-0 pr-2 flex-1">
+          <h3 id="bottom-lesson-title" class="text-xs sm:text-base font-black text-slate-900 truncate">Lesson Title</h3>
+          <p id="bottom-lesson-type" class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">Lesson Type</p>
         </div>
 
-        <div class="flex items-center gap-2 shrink-0">
-          <button id="btn-prev" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer">
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button id="btn-prev" class="px-2.5 sm:px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer">
             <i data-lucide="chevron-left" class="w-4 h-4"></i>
             <span class="hidden sm:inline">Prev</span>
           </button>
-          <button id="btn-next" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer">
+          <button id="btn-next" class="px-2.5 sm:px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-1 cursor-pointer">
             <span class="hidden sm:inline">Next</span>
             <i data-lucide="chevron-right" class="w-4 h-4"></i>
           </button>
-          <button id="btn-complete" class="px-4 sm:px-6 py-2 bg-[#10b981] hover:bg-[#059669] text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer">
+          <button id="btn-complete" class="px-3.5 sm:px-6 py-2 bg-[#10b981] hover:bg-[#059669] text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer">
             <i data-lucide="check-circle" class="w-4 h-4"></i>
-            <span>Mark Complete</span>
+            <span class="hidden xs:inline">Mark Complete</span>
+            <span class="xs:hidden">Done</span>
           </button>
         </div>
       </div>
@@ -182,7 +254,7 @@
   </div>
 
   <!-- Loading Modal -->
-  <div id="loading-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 text-white">
+  <div id="loading-modal" class="hidden fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 text-white">
     <div class="bg-slate-900 border border-slate-700 p-8 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
       <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
       <h3 class="text-lg font-black text-white">Unpacking Course</h3>
@@ -190,15 +262,64 @@
     </div>
   </div>
 
+  <!-- Install Guide Modal (For iOS / Manual Browser Install) -->
+  <div id="install-guide-modal" class="hidden fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 text-slate-900 relative">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <img src="/pwa-192x192.png" alt="Logo" class="w-10 h-10 rounded-xl" />
+          <div>
+            <h3 class="text-lg font-black">Install SkillForge App</h3>
+            <p class="text-xs text-slate-400">Desktop & Mobile Setup</p>
+          </div>
+        </div>
+        <button id="btn-close-guide" class="p-2 text-slate-400 hover:text-slate-700 rounded-xl cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-3 leading-relaxed">
+        <div class="font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="laptop" class="w-4 h-4 text-indigo-600"></i>
+          <span>On Desktop (Chrome / Edge / Brave):</span>
+        </div>
+        <p class="text-slate-600 pl-6">
+          Look at the right side of your address bar at the top, and click the <strong>Install app (⊕)</strong> icon.
+        </p>
+
+        <div class="font-bold text-slate-900 flex items-center gap-2 pt-1 border-t border-slate-200">
+          <i data-lucide="smartphone" class="w-4 h-4 text-emerald-600"></i>
+          <span>On Mobile (iPhone / Safari):</span>
+        </div>
+        <p class="text-slate-600 pl-6">
+          Tap the <strong>Share button (⎋)</strong> at the bottom of Safari, then tap <strong>"Add to Home Screen" (+)</strong>.
+        </p>
+
+        <div class="font-bold text-slate-900 flex items-center gap-2 pt-1 border-t border-slate-200">
+          <i data-lucide="smartphone" class="w-4 h-4 text-emerald-600"></i>
+          <span>On Android (Chrome):</span>
+        </div>
+        <p class="text-slate-600 pl-6">
+          Tap the 3 dots <strong>(⋮)</strong> in Chrome and tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.
+        </p>
+      </div>
+
+      <button id="btn-guide-done" class="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-2xl transition-colors cursor-pointer">
+        Got it!
+      </button>
+    </div>
+  </div>
+
   <!-- Hidden File Input -->
   <input type="file" id="file-input" accept=".zip" class="hidden" />
 
-  <!-- JavaScript Logic -->
+  <!-- ================= APPLICATION JAVASCRIPT ================= -->
   <script>
     let currentCourse = null;
     let currentLesson = null;
     let completedLessonIds = [];
     let allLessonsFlat = [];
+    let deferredInstallPrompt = null;
 
     // DOM Elements
     const dropZoneView = document.getElementById("drop-zone-view");
@@ -214,13 +335,72 @@
     const btnPrev = document.getElementById("btn-prev");
     const btnNext = document.getElementById("btn-next");
     const btnToggleSidebar = document.getElementById("btn-toggle-sidebar");
+    const btnCloseSidebar = document.getElementById("btn-close-sidebar");
     const sidebar = document.getElementById("sidebar");
+    const sidebarBackdrop = document.getElementById("sidebar-backdrop");
     const btnLoadAnother = document.getElementById("btn-load-another");
+    const pwaInstallBanner = document.getElementById("pwa-install-banner");
+    const btnBannerInstall = document.getElementById("btn-banner-install");
+    const btnBannerClose = document.getElementById("btn-banner-close");
+    const btnHeaderInstall = document.getElementById("btn-header-install");
+    const btnPlayerInstall = document.getElementById("btn-player-install");
+    const installGuideModal = document.getElementById("install-guide-modal");
+    const btnCloseGuide = document.getElementById("btn-close-guide");
+    const btnGuideDone = document.getElementById("btn-guide-done");
 
-    // Initialize Lucide Icons
+    // Initialize Icons
     lucide.createIcons();
 
-    // Drag & Drop
+    // ================= PWA SERVICE WORKER & INSTALLATION =================
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/player-sw.js')
+          .then(reg => console.log('✅ ServiceWorker registered:', reg.scope))
+          .catch(err => console.log('ServiceWorker registration error:', err));
+      });
+    }
+
+    // Capture beforeinstallprompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      if (!window.matchMedia('(display-mode: standalone)').matches) {
+        pwaInstallBanner.classList.remove('hidden');
+        btnPlayerInstall.classList.remove('hidden');
+      }
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      pwaInstallBanner.classList.add('hidden');
+      btnPlayerInstall.classList.add('hidden');
+      btnHeaderInstall.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>Installed</span>`;
+      lucide.createIcons();
+    });
+
+    function triggerInstallFlow() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then((choice) => {
+          if (choice.outcome === 'accepted') {
+            pwaInstallBanner.classList.add('hidden');
+          }
+          deferredInstallPrompt = null;
+        });
+      } else {
+        // Show manual install guide
+        installGuideModal.classList.remove('hidden');
+      }
+    }
+
+    btnHeaderInstall.addEventListener('click', triggerInstallFlow);
+    btnBannerInstall.addEventListener('click', triggerInstallFlow);
+    btnPlayerInstall.addEventListener('click', triggerInstallFlow);
+    btnBannerClose.addEventListener('click', () => pwaInstallBanner.classList.add('hidden'));
+    btnCloseGuide.addEventListener('click', () => installGuideModal.classList.add('hidden'));
+    btnGuideDone.addEventListener('click', () => installGuideModal.classList.add('hidden'));
+
+    // ================= DRAG & DROP & FILE SELECTION =================
     dropArea.addEventListener("click", () => fileInput.click());
     btnLoadAnother.addEventListener("click", () => fileInput.click());
 
@@ -250,11 +430,29 @@
       }
     });
 
+    // Mobile Sidebar Drawer
+    function openSidebar() {
+      sidebar.classList.remove("-translate-x-full");
+      sidebarBackdrop.classList.remove("hidden");
+    }
+
+    function closeSidebar() {
+      sidebar.classList.add("-translate-x-full");
+      sidebarBackdrop.classList.add("hidden");
+    }
+
     btnToggleSidebar.addEventListener("click", () => {
-      sidebar.classList.toggle("hidden");
+      if (window.innerWidth >= 1024) {
+        sidebar.classList.toggle("lg:hidden");
+      } else {
+        openSidebar();
+      }
     });
 
-    // ZIP Processing Engine
+    btnCloseSidebar.addEventListener("click", closeSidebar);
+    sidebarBackdrop.addEventListener("click", closeSidebar);
+
+    // ================= ZIP PARSING ENGINE =================
     async function handleZipFile(file) {
       if (!file.name.toLowerCase().endsWith(".zip")) {
         showError("Please select a valid .zip course file.");
@@ -266,7 +464,6 @@
         const zip = new JSZip();
         const loadedZip = await zip.loadAsync(file);
 
-        // Find manifest
         let manifestFile = loadedZip.file("course_manifest.json") || loadedZip.file(/course_manifest\.json$/)[0];
 
         let courseData = {
@@ -317,7 +514,7 @@
             });
           }
         } else {
-          // Folder fallback
+          // Folder structure detection fallback
           const moduleMap = {};
           const entries = Object.keys(loadedZip.files).filter(p => !loadedZip.files[p].dir);
 
@@ -325,10 +522,10 @@
             const parts = path.split("/").filter(Boolean);
             if (parts.length === 0) continue;
             const fileName = parts[parts.length - 1];
-            const modName = parts.length > 1 ? parts[parts.length - 2] : "Lessons";
+            const modName = parts.length > 1 ? parts[parts.length - 2] : "Course Materials";
             const ext = fileName.toLowerCase();
 
-            if (fileName.startsWith(".")) continue;
+            if (fileName.startsWith(".") || fileName.toLowerCase() === "course_manifest.json") continue;
 
             let type = "note";
             let mimeType = "text/plain";
@@ -416,7 +613,10 @@
 
     window.selectLessonById = function(id) {
       const found = allLessonsFlat.find(l => l.id === id);
-      if (found) selectLesson(found);
+      if (found) {
+        selectLesson(found);
+        if (window.innerWidth < 1024) closeSidebar();
+      }
     };
 
     function selectLesson(lesson) {
@@ -424,30 +624,30 @@
       document.getElementById("bottom-lesson-title").textContent = lesson.title;
       document.getElementById("bottom-lesson-type").textContent = `${lesson.type.toUpperCase()} • OFFLINE`;
 
-      // Update active state in sidebar
       renderModules();
 
-      // Render Stage
       mediaStage.innerHTML = "";
       if (lesson.type === "video") {
         mediaStage.innerHTML = `
-          <div class="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl bg-black flex items-center justify-center">
-            ${lesson.blobUrl ? `<video src="${lesson.blobUrl}" controls autoplay class="w-full h-full object-contain"></video>` : '<span class="text-slate-400 font-bold">No Video Source</span>'}
+          <div class="w-full max-w-5xl aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl bg-black flex items-center justify-center">
+            ${lesson.blobUrl ? `<video src="${lesson.blobUrl}" controls autoplay playsinline class="w-full h-full object-contain"></video>` : '<span class="text-slate-400 font-bold">No Video Source</span>'}
           </div>
         `;
       } else if (lesson.type === "note") {
         mediaStage.innerHTML = `
-          <div class="w-full h-full max-w-5xl bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
+          <div class="w-full h-full min-h-[60vh] max-w-5xl bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col">
             <div class="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between text-xs font-bold">
-              <span>${lesson.title}</span>
-              ${lesson.blobUrl ? `<a href="${lesson.blobUrl}" target="_blank" class="px-3 py-1 bg-slate-800 rounded-lg text-slate-200 text-[11px] font-bold">Fullscreen</a>` : ''}
+              <div class="flex items-center gap-2 truncate">
+                <i data-lucide="file-text" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                <span class="truncate">${lesson.title}</span>
+              </div>
+              ${lesson.blobUrl ? `<a href="${lesson.blobUrl}" target="_blank" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-200 text-[11px] font-bold shrink-0 transition-colors">Fullscreen</a>` : ''}
             </div>
-            ${lesson.blobUrl ? `<iframe src="${lesson.blobUrl}#toolbar=1" class="w-full flex-1 border-0"></iframe>` : `<div class="p-8 text-slate-700 whitespace-pre-wrap font-medium">${lesson.textContent || 'No notes content.'}</div>`}
+            ${lesson.blobUrl ? `<iframe src="${lesson.blobUrl}#toolbar=1" class="w-full flex-1 border-0"></iframe>` : `<div class="p-6 sm:p-8 text-slate-700 whitespace-pre-wrap font-medium">${lesson.textContent || 'No notes content.'}</div>`}
           </div>
         `;
       }
 
-      // Update Complete Button Style
       updateCompleteButton();
       lucide.createIcons();
     }
@@ -456,11 +656,11 @@
       if (!currentLesson) return;
       const isDone = completedLessonIds.includes(currentLesson.id);
       if (isDone) {
-        btnComplete.className = "px-4 sm:px-6 py-2 bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer";
-        btnComplete.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i><span>Completed</span>`;
+        btnComplete.className = "px-3.5 sm:px-6 py-2 bg-emerald-50 border border-emerald-200 text-emerald-600 text-xs font-black rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer";
+        btnComplete.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i><span class="hidden xs:inline">Completed</span><span class="xs:hidden">Done</span>`;
       } else {
-        btnComplete.className = "px-4 sm:px-6 py-2 bg-[#10b981] hover:bg-[#059669] text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer";
-        btnComplete.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i><span>Mark Complete</span>`;
+        btnComplete.className = "px-3.5 sm:px-6 py-2 bg-[#10b981] hover:bg-[#059669] text-white text-xs font-black rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer";
+        btnComplete.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i><span class="hidden xs:inline">Mark Complete</span><span class="xs:hidden">Complete</span>`;
       }
       lucide.createIcons();
     }
@@ -499,7 +699,7 @@
       if (isAllDone) {
         certBox.className = "p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between";
         certIcon.className = "w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-xs";
-        certStatus.textContent = "UNLOCKED & MASTERED!";
+        certStatus.textContent = "UNLOCKED & READY";
         certStatus.className = "text-[10px] font-black text-emerald-700";
         certLock.innerHTML = `<i data-lucide="unlock" class="w-4 h-4 text-emerald-600"></i>`;
       } else {

@@ -1,0 +1,54 @@
+{
+  "id": "/offline-player",
+  "name": "SkillForge Offline Player",
+  "short_name": "SkillForge",
+  "description": "Standalone Offline Course Player for SkillForge ZIP Packages",
+  "start_url": "/SkillForge-Offline-Player.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#09090b",
+  "background_color": "#f8fafc",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/desktop-screenshot.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "SkillForge Offline Player Desktop"
+    },
+    {
+      "src": "/mobile-screenshot.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "SkillForge Offline Player Mobile"
+    }
+  ]
+}
