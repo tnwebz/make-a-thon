@@ -1,11 +1,13 @@
 import { defineConfig, loadEnv } from 'vite'
-import react from '@vitejs/plugin-react-swc' // 👈 Restored your original SWC plugin
+import react from '@vitejs/plugin-react-swc'
 import { VitePWA } from 'vite-plugin-pwa'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const apiUrl = env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+  const useHttps = env.VITE_HTTPS === 'true' || mode === 'https';
   
   // Escape regex characters in apiUrl for urlPattern matching
   const escapedApiUrl = apiUrl.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -13,11 +15,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      useHttps ? basicSsl() : undefined,
       VitePWA({
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         injectRegister: 'auto',
         devOptions: {
-          enabled: true // 👈 Allows testing PWA features on localhost!
+          enabled: true
         },
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {

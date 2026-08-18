@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   X, Download, Laptop, CheckCircle2, ShieldCheck, 
-  ExternalLink, Sparkles, Plus, HelpCircle, HardDrive, 
-  Layers, ArrowRight, Smartphone, Share
+  ExternalLink, Plus, ArrowRight, Smartphone
 } from "lucide-react";
 import { usePwaInstall } from "../usePwaInstall";
 import { useNavigate } from "react-router-dom";
@@ -14,9 +13,8 @@ interface InstallAppModalProps {
 }
 
 export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClose }) => {
-  const { canInstall, isInstalled, isIOS, triggerInstall } = usePwaInstall();
+  const { isInstalled, isIOS, triggerInstall } = usePwaInstall();
   const [installSuccess, setInstallSuccess] = useState(false);
-  const [showManualGuide, setShowManualGuide] = useState(false);
   const navigate = useNavigate();
 
   const handleInstallClick = async () => {
@@ -27,7 +25,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
     }
 
     if (isIOS) {
-      setShowManualGuide(true);
+      // iOS requires manual Safari action, already visible in UI
       return;
     }
 
@@ -36,10 +34,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
       setInstallSuccess(true);
       setTimeout(() => {
         onClose();
-      }, 2000);
-    } else {
-      // If native programmatic prompt not exposed, show standard PWA browser guide
-      setShowManualGuide(true);
+      }, 1800);
     }
   };
 
@@ -47,6 +42,8 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
     navigate("/offline-player");
     onClose();
   };
+
+  const isAlreadyInstalled = isInstalled || installSuccess;
 
   return (
     <AnimatePresence>
@@ -86,13 +83,13 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                      SkillForge App
+                      Install SkillForge
                     </h3>
                     <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
                       PWA
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 font-semibold">Progressive Web Application</p>
+                  <p className="text-xs text-slate-400 font-semibold">Get SkillForge as an app on your device and use it offline.</p>
                 </div>
               </div>
 
@@ -105,16 +102,16 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
               </button>
             </div>
 
-            {/* If Already Installed or Just Installed */}
-            {isInstalled || installSuccess ? (
+            {/* If Already Installed */}
+            {isAlreadyInstalled ? (
               <div className="my-6 text-center space-y-4">
                 <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                   <CheckCircle2 size={36} />
                 </div>
                 <div>
-                  <h4 className="text-xl font-black text-slate-900">SkillForge is already installed</h4>
+                  <h4 className="text-xl font-black text-slate-900">✓ SkillForge Already Installed</h4>
                   <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto mt-1.5 leading-relaxed">
-                    SkillForge is installed as a standalone app on this device. You can launch it from your Desktop or Mobile Home Screen anytime offline.
+                    SkillForge is installed on your device as a standalone application with offline support.
                   </p>
                 </div>
 
@@ -152,59 +149,43 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
                     <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
                       <Laptop size={18} />
                     </div>
-                    <span className="text-xs font-black text-slate-900">Home Screen Icon</span>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Desktop & Mobile app</span>
+                    <span className="text-xs font-black text-slate-900">Standalone App</span>
+                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Independent window</span>
                   </div>
                 </div>
 
-                {/* Device-Specific Guidance (If programmatic prompt not available) */}
-                {showManualGuide && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="mb-4 p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-xs text-indigo-900 space-y-2.5 overflow-hidden"
-                  >
-                    {isIOS ? (
-                      <div>
-                        <div className="font-extrabold flex items-center gap-1.5 text-indigo-950 mb-1">
-                          <Smartphone size={15} className="text-indigo-600" />
-                          <span>Install on iPhone / iPad:</span>
-                        </div>
-                        <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1 text-[11px] leading-relaxed">
-                          <li>Tap the <strong>Share button (⎋)</strong> at the bottom of Safari.</li>
-                          <li>Scroll down and tap <strong>"Add to Home Screen" (+)</strong>.</li>
-                          <li>Tap <strong>Add</strong> at the top right to install SkillForge!</li>
-                        </ol>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="font-extrabold flex items-center gap-1.5 text-indigo-950 mb-1">
-                          <HelpCircle size={15} className="text-indigo-600" />
-                          <span>Install SkillForge in your Browser:</span>
-                        </div>
-                        <p className="text-slate-600 text-[11px] leading-relaxed">
-                          Look at your browser address bar at the top right and click the <strong>Install app (⊕)</strong> icon to add SkillForge to your Desktop / Taskbar.
-                        </p>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
+                {/* iPhone / iPad Specific Native Guidance */}
+                {isIOS ? (
+                  <div className="mb-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-900 space-y-2">
+                    <div className="font-extrabold flex items-center gap-1.5 text-slate-950">
+                      <Smartphone size={15} className="text-emerald-600" />
+                      <span>Add to Home Screen (iOS):</span>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1 text-[11px] leading-relaxed">
+                      <li>Tap the <strong>Share button (⎋)</strong> at the bottom of Safari.</li>
+                      <li>Scroll down and tap <strong>"Add to Home Screen" (+)</strong>.</li>
+                      <li>Tap <strong>Add</strong> at the top right to complete.</li>
+                    </ol>
+                  </div>
+                ) : null}
 
                 {/* Action Buttons */}
                 <div className="space-y-2 pt-1">
-                  <button
-                    onClick={handleInstallClick}
-                    className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
-                  >
-                    <Download size={18} />
-                    <span>Install SkillForge App</span>
-                  </button>
+                  {!isIOS && (
+                    <button
+                      onClick={handleInstallClick}
+                      className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
+                    >
+                      <Download size={18} />
+                      <span>Install SkillForge App</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={handleOpenOfflinePlayer}
-                    className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className={`w-full ${isIOS ? 'h-13 bg-slate-900 hover:bg-slate-800 text-white font-black text-sm' : 'h-11 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs'} rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer`}
                   >
-                    <span>Open Offline Player</span>
+                    <span>Open Standalone Web Player</span>
                     <ExternalLink size={14} />
                   </button>
                 </div>
@@ -213,7 +194,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
 
             {/* Footer note */}
             <p className="text-[11px] text-slate-400 text-center font-medium mt-4">
-              Standards-Based Progressive Web Application (PWA)
+              Progressive Web App • Desktop, Android & iOS Ready
             </p>
           </motion.div>
         </div>
