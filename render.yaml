@@ -40,4 +40,4 @@ databases:
   - name: skillforge-postgres
     plan: free
     databaseName: skillforge_db
-    user: postgres
+    user: skillforge_user
