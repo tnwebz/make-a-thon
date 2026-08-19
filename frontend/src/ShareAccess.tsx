@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "./config";
 import axios from "axios";
 import { 
-  KeyRound, Users, Star, BookOpen, Layers, Lock, 
+  KeyRound, Users, Star, BookOpen, Layers, Lock, User,
   ArrowRight, Wifi, AlertCircle, Loader2, CheckCircle2,
   Download, Eye, Sparkles, RefreshCw, Laptop
 } from "lucide-react";
@@ -34,6 +34,7 @@ const ShareAccess: React.FC = () => {
 
   const [coursePreview, setCoursePreview] = useState<CoursePreviewData | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
+  const [studentName, setStudentName] = useState(localStorage.getItem("skillforge_student_name") || "");
   const [passkey, setPasskey] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -89,6 +90,11 @@ const ShareAccess: React.FC = () => {
       return;
     }
 
+    if (!studentName.trim()) {
+      setErrorMsg("Please enter your name so the instructor can see you in the active classroom.");
+      return;
+    }
+
     if (passkey.length < 4) {
       setErrorMsg("Please enter the 8-character access passkey provided by your instructor.");
       return;
@@ -98,8 +104,20 @@ const ShareAccess: React.FC = () => {
     setErrorMsg(null);
 
     try {
+      // Get or create persistent client UUID
+      let clientId = localStorage.getItem("skillforge_client_id");
+      if (!clientId) {
+        clientId = "student_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now().toString(36);
+        localStorage.setItem("skillforge_client_id", clientId);
+      }
+
+      // Persist student name
+      localStorage.setItem("skillforge_student_name", studentName.trim());
+
       const res = await axios.post(`${API_BASE_URL}/share-sessions/${codeUpper}/access`, {
-        passkey: passkey.trim()
+        passkey: passkey.trim(),
+        studentName: studentName.trim(),
+        clientId
       });
 
       const { token, accessMode, courseTitle, courseImage } = res.data;
@@ -113,6 +131,8 @@ const ShareAccess: React.FC = () => {
           accessMode,
           courseTitle,
           courseImage,
+          studentName: studentName.trim(),
+          clientId,
           accessedAt: new Date().toISOString()
         })
       );
@@ -290,7 +310,40 @@ const ShareAccess: React.FC = () => {
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleEnterCourse} className="space-y-3">
+              <form onSubmit={handleEnterCourse} className="space-y-4">
+                {/* 1. STUDENT NAME INPUT */}
+                <div className="space-y-1.5">
+                  <label 
+                    htmlFor="student-name-input"
+                    className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 pl-1 flex items-center justify-between"
+                  >
+                    <span>Your Full Name</span>
+                    <span className="text-[10px] text-emerald-600 font-bold lowercase tracking-normal bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                      shown on classroom screen
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="student-name-input"
+                      type="text"
+                      autoComplete="name"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={studentName}
+                      onChange={(e) => {
+                        setStudentName(e.target.value);
+                        setErrorMsg(null);
+                      }}
+                      placeholder="e.g. Alex Johnson"
+                      className="w-full text-base font-bold py-3.5 px-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:bg-white focus:border-slate-900 focus:outline-none transition-all placeholder:text-slate-300 text-slate-900 shadow-2xs"
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <User size={18} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. CLASSROOM ACCESS PASSKEY */}
                 <div className="space-y-1.5">
                   <label 
                     htmlFor="passkey-input"
@@ -302,16 +355,15 @@ const ShareAccess: React.FC = () => {
                     <input
                       id="passkey-input"
                       type="text"
-                      autoFocus
                       autoComplete="off"
                       autoCorrect="off"
                       spellCheck={false}
                       value={passkey}
                       onChange={handlePasskeyChange}
                       placeholder="e.g. 7K4M92PX"
-                      className="w-full text-center font-mono text-xl sm:text-2xl font-black tracking-widest py-3.5 px-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:bg-white focus:border-slate-900 focus:outline-none transition-all placeholder:text-slate-300 placeholder:font-mono text-slate-900"
+                      className="w-full text-center font-mono text-xl sm:text-2xl font-black tracking-widest py-3.5 px-4 bg-slate-50 border-2 border-slate-200 rounded-2xl focus:bg-white focus:border-slate-900 focus:outline-none transition-all placeholder:text-slate-300 placeholder:font-mono text-slate-900 shadow-2xs"
                     />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300">
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
                       <Lock size={18} />
                     </div>
                   </div>

@@ -84,6 +84,27 @@ const SharedCourseViewer: React.FC = () => {
     fetchSharedCourse();
   }, [codeUpper, token]);
 
+  // Periodic heartbeat to report active connection and student presence
+  useEffect(() => {
+    if (!token || !codeUpper) return;
+    const clientId = localStorage.getItem("skillforge_client_id");
+    const studentName = localStorage.getItem("skillforge_student_name");
+
+    const sendHeartbeat = async () => {
+      try {
+        await axios.post(
+          `${API_BASE_URL}/share-sessions/${codeUpper}/heartbeat`,
+          { clientId, studentName },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } catch (e) {}
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 8000);
+    return () => clearInterval(interval);
+  }, [codeUpper, token]);
+
   const fetchSharedCourse = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -168,7 +189,8 @@ const SharedCourseViewer: React.FC = () => {
   const handleDownloadCourse = () => {
     if (!token || course?.accessMode !== "ALLOW_DOWNLOAD") return;
     setDownloadingCourse(true);
-    const downloadUrl = `${API_BASE_URL}/share-sessions/${codeUpper}/download/course?token=${token}`;
+    const clientId = localStorage.getItem("skillforge_client_id") || "";
+    const downloadUrl = `${API_BASE_URL}/share-sessions/${codeUpper}/download/course?token=${token}&clientId=${clientId}`;
     window.location.href = downloadUrl;
     setTimeout(() => setDownloadingCourse(false), 3000);
   };
@@ -177,7 +199,8 @@ const SharedCourseViewer: React.FC = () => {
     e.stopPropagation();
     if (!token || course?.accessMode !== "ALLOW_DOWNLOAD") return;
     setDownloadingModuleId(modId);
-    const downloadUrl = `${API_BASE_URL}/share-sessions/${codeUpper}/download/module/${modId}?token=${token}`;
+    const clientId = localStorage.getItem("skillforge_client_id") || "";
+    const downloadUrl = `${API_BASE_URL}/share-sessions/${codeUpper}/download/module/${modId}?token=${token}&clientId=${clientId}`;
     window.location.href = downloadUrl;
     setTimeout(() => setDownloadingModuleId(null), 3000);
   };
@@ -510,6 +533,24 @@ const SharedCourseViewer: React.FC = () => {
               <ChevronLeft size={20} className="rotate-180" />
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Student Profile Identity */}
+      <div className="px-6 py-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-full bg-emerald-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-2xs">
+            {(localStorage.getItem("skillforge_student_name") || "S").charAt(0).toUpperCase()}
+          </div>
+          <div className="truncate">
+            <span className="text-xs font-bold text-slate-900 truncate block">
+              {localStorage.getItem("skillforge_student_name") || "Connected Student"}
+            </span>
+            <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Classroom LAN Active
+            </span>
+          </div>
         </div>
       </div>
 

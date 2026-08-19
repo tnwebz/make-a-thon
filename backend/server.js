@@ -52,6 +52,7 @@ app.use('/api/v1/assignments', require('./routes/assignments'));
 app.use('/api/v1/profile', require('./routes/profile'));
 app.use('/api/v1/offline', require('./routes/offline_sharing'));
 app.use('/api/v1/share-sessions', require('./routes/share_sessions'));
+app.use('/api/v1/downloads', require('./routes/downloads'));
 
 // 🎬 Mobile App Video Player — serves Plyr with a real HTTP origin
 // YouTube blocks embedding from null/about:blank origins (React Native WebView inline HTML)
@@ -220,14 +221,10 @@ setInterval(() => {
 // Sync Database and Start the server
 const PORT = process.env.PORT || 8000;
 
-sequelize.sync({ alter: true })
-    .then(() => {
-        console.log('✅ PostgreSQL Database connected and synchronized.');
-        server.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server is running on port ${PORT}`);
-            console.log(`📡 Socket.IO ready for ShareHub connections`);
-        });
-    })
-    .catch(err => {
-        console.error('❌ Failed to sync database:', err);
-    });
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`📡 Socket.IO ready for ShareHub connections`);
+    sequelize.authenticate()
+        .then(() => console.log('✅ PostgreSQL Database connected.'))
+        .catch(err => console.error('❌ Failed to connect database:', err));
+});

@@ -15,9 +15,16 @@ if (process.env.DATABASE_URL) {
     } catch (e) {
         console.error('Error parsing DATABASE_URL:', e);
     }
+    const isCloudDb = !databaseUrl.includes('localhost') && !databaseUrl.includes('127.0.0.1');
     sequelize = new Sequelize(databaseUrl, {
         dialect: 'postgres',
-        logging: false
+        logging: false,
+        dialectOptions: isCloudDb ? {
+            ssl: {
+                require: true,
+                rejectUnauthorized: false
+            }
+        } : {}
     });
 } else {
     sequelize = new Sequelize('skillforge_db', 'postgres', '0728', {

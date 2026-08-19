@@ -18,6 +18,7 @@ interface OfflineLesson {
   title: string;
   type: "video" | "note" | "quiz" | "code_test";
   blobUrl?: string;
+  blobData?: Blob;
   textContent?: string | null;
   mimeType?: string;
   duration?: number | null;
@@ -102,11 +103,30 @@ const OfflineCoursePlayer: React.FC = () => {
   const loadCachedCourses = async () => {
     setLoadingDB(true);
     try {
-      const db = await getOfflineDB();
-      const stored = await db.getAll(STORE_COURSES);
-      if (stored && stored.length > 0) {
-        setCourses(stored);
-        selectCourse(stored[0]);
+      if (typeof window !== "undefined" && "indexedDB" in window) {
+        const db = await getOfflineDB();
+        const stored = await db.getAll(STORE_COURSES);
+        if (stored && stored.length > 0) {
+          // Restore active blob URLs from persistent Blob data
+          const restored: OfflineCourse[] = stored.map((c: OfflineCourse) => ({
+            ...c,
+            modules: (c.modules || []).map((m: OfflineModule) => ({
+              ...m,
+              lessons: (m.lessons || []).map((l: OfflineLesson) => {
+                let blobUrl = l.blobUrl;
+                if (l.blobData) {
+                  try {
+                    blobUrl = URL.createObjectURL(l.blobData);
+                  } catch (e) {}
+                }
+                return { ...l, blobUrl };
+              })
+            }))
+          }));
+
+          setCourses(restored);
+          selectCourse(restored[0]);
+        }
       }
     } catch (e) {
       console.error("IndexedDB load error:", e);
@@ -201,8 +221,44 @@ const OfflineCoursePlayer: React.FC = () => {
         setUnpackProgress({ percent: 50, text: "Unpacking videos and notes..." });
 
         const manifestDir = manifestFile.name.replace("course_manifest.json", "");
-        const modules: OfflineModule[] = [];
+        const allEntries = Object.keys(loadedZip.files).filter(k => !loadedZip.files[k].dir);
 
+        // Robust ZIP entry lookup function that handles directory prefixes and relative paths
+        const findZipEntry = (filePath: string) => {
+          if (!filePath) return null;
+          const cleanPath = filePath.replace(/^\/+/, "").replace(/\\+/g, "/");
+
+          // 1. Direct match
+          if (loadedZip.file(cleanPath)) return loadedZip.file(cleanPath);
+          if (loadedZip.file(filePath)) return loadedZip.file(filePath);
+
+          // 2. Match with manifest directory prefix
+          if (manifestDir) {
+            const prefixed = `${manifestDir}${cleanPath}`.replace(/^\/+/, "");
+            if (loadedZip.file(prefixed)) return loadedZip.file(prefixed);
+          }
+
+          // 3. Match by suffix (e.g. entry is "CourseName/Module 1/01 - video.mp4" and path is "Module 1/01 - video.mp4")
+          const suffixMatch = allEntries.find(k => 
+            k.endsWith(cleanPath) || 
+            k.toLowerCase().endsWith(cleanPath.toLowerCase())
+          );
+          if (suffixMatch) return loadedZip.file(suffixMatch);
+
+          // 4. Match by filename only
+          const fileName = cleanPath.split("/").pop();
+          if (fileName) {
+            const fileMatch = allEntries.find(k => 
+              k.endsWith(fileName) || 
+              k.toLowerCase().endsWith(fileName.toLowerCase())
+            );
+            if (fileMatch) return loadedZip.file(fileMatch);
+          }
+
+          return null;
+        };
+
+        const modules: OfflineModule[] = [];
         const totalLessons = manifest.modules.reduce((acc: number, m: any) => acc + (m.lessons?.length || 0), 0);
         let processedLessons = 0;
 
@@ -211,21 +267,23 @@ const OfflineCoursePlayer: React.FC = () => {
 
           for (const l of m.lessons || []) {
             let blobUrl: string | undefined = undefined;
+            let blobData: Blob | undefined = undefined;
             let mimeType = "application/octet-stream";
 
             if (l.filePath) {
-              const fullZipPath = `${manifestDir}${l.filePath}`.replace(/^\//, "");
-              const mediaZipEntry = loadedZip.file(fullZipPath) || loadedZip.file(l.filePath);
+              const mediaZipEntry = findZipEntry(l.filePath);
 
               if (mediaZipEntry) {
-                const ext = fullZipPath.toLowerCase();
+                const ext = mediaZipEntry.name.toLowerCase();
                 if (ext.endsWith(".mp4")) mimeType = "video/mp4";
                 else if (ext.endsWith(".webm")) mimeType = "video/webm";
+                else if (ext.endsWith(".mov")) mimeType = "video/mp4";
                 else if (ext.endsWith(".pdf")) mimeType = "application/pdf";
                 else if (ext.endsWith(".txt")) mimeType = "text/plain";
 
-                const blob = await mediaZipEntry.async("blob");
-                blobUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
+                const rawBlob = await mediaZipEntry.async("blob");
+                blobData = new Blob([rawBlob], { type: mimeType });
+                blobUrl = URL.createObjectURL(blobData);
               }
             }
 
@@ -234,6 +292,7 @@ const OfflineCoursePlayer: React.FC = () => {
               title: l.title || "Lesson",
               type: (l.type as any) || (l.filePath?.endsWith(".mp4") ? "video" : "note"),
               blobUrl,
+              blobData,
               textContent: l.textContent || null,
               mimeType,
               duration: l.duration || null,

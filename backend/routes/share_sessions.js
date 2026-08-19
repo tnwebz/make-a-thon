@@ -104,6 +104,47 @@ function sanitizeFilename(name) {
     return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, ' ').trim();
 }
 
+// ============================================
+// Live Connected Devices & Transfer Progress Registry
+// ============================================
+// Map: shareCode -> Map: clientId -> ClientRecord
+const sessionClients = new Map();
+
+function getSessionClientMap(shareCode) {
+    const code = String(shareCode || '').toUpperCase();
+    if (!sessionClients.has(code)) {
+        sessionClients.set(code, new Map());
+    }
+    return sessionClients.get(code);
+}
+
+function detectDevice(userAgent) {
+    if (!userAgent) return 'Web Browser';
+    if (/Android/i.test(userAgent)) return 'Android Device';
+    if (/iPhone|iPad|iPod/i.test(userAgent)) return 'iOS Device';
+    if (/Windows/i.test(userAgent)) return 'Windows PC';
+    if (/Macintosh/i.test(userAgent)) return 'Mac Desktop';
+    if (/Linux/i.test(userAgent)) return 'Linux Device';
+    return 'Web Browser';
+}
+
+// Clean up stale client sessions older than 24 hours every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    const MAX_STALE_MS = 24 * 60 * 60 * 1000;
+    for (const [code, clientMap] of sessionClients.entries()) {
+        for (const [clientId, client] of clientMap.entries()) {
+            const lastActivity = new Date(client.lastSeenAt || client.joinedAt).getTime();
+            if (now - lastActivity > MAX_STALE_MS) {
+                clientMap.delete(clientId);
+            }
+        }
+        if (clientMap.size === 0) {
+            sessionClients.delete(code);
+        }
+    }
+}, 10 * 60 * 1000);
+
 
 // ============================================
 // INSTRUCTOR ENDPOINTS (require JWT auth)
@@ -405,30 +446,193 @@ router.post('/:shareCode/access', async (req, res) => {
             return res.status(401).json({ detail: 'Invalid access key. Please check and try again.' });
         }
 
+        // Register Connected Student Device
+        const clientMap = getSessionClientMap(session.shareCode);
+        const clientId = req.body.clientId || `client_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+        const studentName = (req.body.studentName || '').trim() || `Student ${clientMap.size + 1}`;
+        const deviceType = req.body.deviceType || detectDevice(req.headers['user-agent']);
+        const clientIp = req.ip || req.connection.remoteAddress || '127.0.0.1';
+
+        const clientRecord = {
+            clientId,
+            studentName,
+            deviceType,
+            ip: clientIp.replace('::ffff:', ''),
+            userAgent: req.headers['user-agent'] || '',
+            joinedAt: new Date().toISOString(),
+            lastSeenAt: new Date().toISOString(),
+            status: 'ONLINE',
+            downloadProgress: null
+        };
+        clientMap.set(clientId, clientRecord);
+
         // Generate share access token (24h expiry)
         const shareToken = jwt.sign(
             {
                 type: 'share_access',
                 shareCode: session.shareCode,
                 courseId: session.courseId,
-                accessMode: session.accessMode
+                accessMode: session.accessMode,
+                clientId,
+                studentName
             },
             SECRET_KEY,
             { expiresIn: '24h' }
         );
 
-        console.log(`✅ Share access granted: ${req.params.shareCode}`);
+        console.log(`✅ Share access granted: ${session.shareCode} for student "${studentName}" (${clientId} on ${deviceType})`);
 
         res.json({
             token: shareToken,
             shareCode: session.shareCode,
             accessMode: session.accessMode,
             courseTitle: session.course ? session.course.title : 'Course',
-            courseImage: session.course ? session.course.image_url : null
+            courseImage: session.course ? session.course.image_url : null,
+            clientId,
+            studentName
         });
     } catch (error) {
         console.error('Share access error:', error);
         res.status(500).json({ detail: 'Internal Server Error' });
+    }
+});
+
+/**
+ * POST /api/v1/share-sessions/:shareCode/heartbeat
+ * Keep student connection active and update online status
+ */
+router.post('/:shareCode/heartbeat', async (req, res) => {
+    try {
+        const shareCode = String(req.params.shareCode).toUpperCase();
+        const clientMap = getSessionClientMap(shareCode);
+        
+        let clientId = req.body.clientId;
+        let studentName = req.body.studentName;
+
+        // Try extracting from auth header if present
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            try {
+                const token = req.headers.authorization.split(' ')[1];
+                const payload = jwt.verify(token, SECRET_KEY);
+                if (payload.clientId) clientId = payload.clientId;
+                if (payload.studentName) studentName = payload.studentName;
+            } catch (e) {}
+        }
+
+        if (clientId) {
+            let client = clientMap.get(clientId);
+            if (!client) {
+                const clientIp = req.ip || req.connection.remoteAddress || '127.0.0.1';
+                client = {
+                    clientId,
+                    studentName: studentName || 'Student',
+                    deviceType: req.body.deviceType || detectDevice(req.headers['user-agent']),
+                    ip: clientIp.replace('::ffff:', ''),
+                    joinedAt: new Date().toISOString(),
+                    lastSeenAt: new Date().toISOString(),
+                    status: 'ONLINE',
+                    downloadProgress: null
+                };
+                clientMap.set(clientId, client);
+            } else {
+                client.lastSeenAt = new Date().toISOString();
+                client.status = 'ONLINE';
+                if (studentName && studentName.trim()) {
+                    client.studentName = studentName.trim();
+                }
+            }
+        }
+
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Heartbeat error:', error);
+        res.status(500).json({ detail: 'Heartbeat failed' });
+    }
+});
+
+/**
+ * GET /api/v1/share-sessions/:shareCode/clients
+ * Get live list of connected devices, student names, and download progress
+ */
+router.get('/:shareCode/clients', async (req, res) => {
+    try {
+        const shareCode = String(req.params.shareCode).toUpperCase();
+        const session = await ShareSession.findOne({ where: { shareCode } });
+        if (!session) {
+            return res.status(404).json({ detail: 'Share session not found' });
+        }
+
+        const clientMap = getSessionClientMap(shareCode);
+        const now = Date.now();
+        const clients = [];
+
+        for (const client of clientMap.values()) {
+            const lastActivity = new Date(client.lastSeenAt || client.joinedAt).getTime();
+            const isOnline = (now - lastActivity) < 45000; // Active within 45 seconds
+
+            clients.push({
+                ...client,
+                status: isOnline ? 'ONLINE' : 'AWAY'
+            });
+        }
+
+        // Sort: downloading active first, then most recently active
+        clients.sort((a, b) => {
+            if (a.downloadProgress?.status === 'DOWNLOADING' && b.downloadProgress?.status !== 'DOWNLOADING') return -1;
+            if (b.downloadProgress?.status === 'DOWNLOADING' && a.downloadProgress?.status !== 'DOWNLOADING') return 1;
+            return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
+        });
+
+        res.json({
+            shareCode,
+            totalConnected: clients.length,
+            activeCount: clients.filter(c => c.status === 'ONLINE').length,
+            clients
+        });
+    } catch (error) {
+        console.error('Fetch share clients error:', error);
+        res.status(500).json({ detail: 'Internal Server Error' });
+    }
+});
+
+/**
+ * POST /api/v1/share-sessions/:shareCode/download-progress
+ * Client reports real-time download transfer progress
+ */
+router.post('/:shareCode/download-progress', async (req, res) => {
+    try {
+        const shareCode = String(req.params.shareCode).toUpperCase();
+        const clientMap = getSessionClientMap(shareCode);
+        let clientId = req.body.clientId || req.query.clientId;
+
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+            try {
+                const token = req.headers.authorization.split(' ')[1];
+                const payload = jwt.verify(token, SECRET_KEY);
+                if (payload.clientId) clientId = payload.clientId;
+            } catch (e) {}
+        }
+
+        if (clientId && clientMap.has(clientId)) {
+            const client = clientMap.get(clientId);
+            const { bytesTransferred, totalBytes, percent, status, speed, fileName } = req.body;
+
+            client.downloadProgress = {
+                fileName: fileName || client.downloadProgress?.fileName || 'Course.zip',
+                bytesTransferred: Number(bytesTransferred) || 0,
+                totalBytes: Number(totalBytes) || 0,
+                percent: Math.min(100, Math.max(0, Number(percent) || 0)),
+                status: status || 'DOWNLOADING', // 'DOWNLOADING' | 'COMPLETED' | 'FAILED'
+                speed: speed || '',
+                updatedAt: new Date().toISOString()
+            };
+            client.lastSeenAt = new Date().toISOString();
+        }
+
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('Update download progress error:', error);
+        res.status(500).json({ detail: 'Failed to update progress' });
     }
 });
 
@@ -666,6 +870,97 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
         const modules = course.Modules
             ? course.Modules.sort((a, b) => (a.order || 0) - (b.order || 0))
             : [];
+
+        // Track live download progress for connected student
+        const clientId = req.share.clientId || req.query.clientId;
+        const clientMap = getSessionClientMap(req.share.shareCode);
+        const client = clientId ? clientMap.get(clientId) : null;
+
+        // Estimate total course content uncompressed size
+        let estimatedTotalBytes = 1024 * 50; // manifest overhead
+        for (const mod of modules) {
+            for (const item of mod.items || []) {
+                if (item.content && (item.content.startsWith('/uploads/') || item.content.startsWith('uploads/'))) {
+                    const relPath = item.content.startsWith('/') ? item.content.substring(1) : item.content;
+                    const fullPath = path.join(__dirname, '..', relPath);
+                    if (fs.existsSync(fullPath)) {
+                        try {
+                            estimatedTotalBytes += fs.statSync(fullPath).size;
+                        } catch (e) {}
+                    }
+                } else if (item.content && item.content.startsWith('data:')) {
+                    const parts = item.content.split(',');
+                    if (parts[1]) {
+                        estimatedTotalBytes += Math.floor((parts[1].length * 3) / 4);
+                    }
+                } else if (item.content) {
+                    estimatedTotalBytes += Buffer.byteLength(item.content, 'utf8');
+                }
+            }
+        }
+
+        if (client) {
+            client.downloadProgress = {
+                fileName: `${courseName}.zip`,
+                bytesTransferred: 0,
+                totalBytes: estimatedTotalBytes,
+                percent: 0,
+                status: 'DOWNLOADING',
+                speed: '0 MB/s',
+                startedAt: Date.now(),
+                updatedAt: new Date().toISOString()
+            };
+        }
+
+        let bytesSent = 0;
+        let lastUpdate = Date.now();
+
+        archive.on('data', (chunk) => {
+            bytesSent += chunk.length;
+            const now = Date.now();
+            if (client && (now - lastUpdate > 250 || bytesSent >= estimatedTotalBytes)) {
+                lastUpdate = now;
+                const percent = estimatedTotalBytes > 0 
+                    ? Math.min(99, Math.round((bytesSent / estimatedTotalBytes) * 100)) 
+                    : 50;
+                const elapsedSec = (now - client.downloadProgress.startedAt) / 1000;
+                const speed = elapsedSec > 0 ? (bytesSent / (1024 * 1024 * elapsedSec)).toFixed(1) + ' MB/s' : '0 MB/s';
+
+                client.downloadProgress = {
+                    ...client.downloadProgress,
+                    bytesTransferred: bytesSent,
+                    totalBytes: Math.max(estimatedTotalBytes, bytesSent),
+                    percent,
+                    speed,
+                    status: 'DOWNLOADING',
+                    updatedAt: new Date().toISOString()
+                };
+            }
+        });
+
+        res.on('finish', () => {
+            if (client) {
+                const elapsedSec = (Date.now() - (client.downloadProgress?.startedAt || Date.now())) / 1000;
+                const avgSpeed = elapsedSec > 0 ? (bytesSent / (1024 * 1024 * elapsedSec)).toFixed(1) + ' MB/s' : '';
+                client.downloadProgress = {
+                    ...client.downloadProgress,
+                    bytesTransferred: bytesSent,
+                    totalBytes: bytesSent,
+                    percent: 100,
+                    status: 'COMPLETED',
+                    speed: avgSpeed,
+                    completedAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+            }
+        });
+
+        req.on('close', () => {
+            if (client && client.downloadProgress?.status === 'DOWNLOADING') {
+                client.downloadProgress.status = 'CANCELLED';
+                client.downloadProgress.updatedAt = new Date().toISOString();
+            }
+        });
 
         const manifest = {
             title: course.title,

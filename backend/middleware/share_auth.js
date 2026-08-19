@@ -56,6 +56,8 @@ const shareAuthMiddleware = async (req, res, next) => {
             shareCode: payload.shareCode,
             courseId: payload.courseId,
             accessMode: payload.accessMode,
+            clientId: payload.clientId || req.query.clientId || null,
+            studentName: payload.studentName || null,
             session: session
         };
 

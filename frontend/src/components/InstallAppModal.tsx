@@ -1,12 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   X, Download, Laptop, CheckCircle2, ShieldCheck, 
   ExternalLink, Sparkles, Plus, HelpCircle, HardDrive, 
-  Layers, ArrowRight, Smartphone, Share
+  Layers, ArrowRight, Smartphone, Share, Check, ArrowDown
 } from "lucide-react";
-import { usePwaInstall } from "../usePwaInstall";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../config";
 
 interface InstallAppModalProps {
   isOpen: boolean;
@@ -14,33 +14,37 @@ interface InstallAppModalProps {
 }
 
 export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClose }) => {
-  const { canInstall, isInstalled, isIOS, triggerInstall } = usePwaInstall();
-  const [installSuccess, setInstallSuccess] = useState(false);
-  const [showManualGuide, setShowManualGuide] = useState(false);
   const navigate = useNavigate();
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [isWindows, setIsWindows] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [downloadStarted, setDownloadStarted] = useState<"android" | "windows" | null>(null);
 
-  const handleInstallClick = async () => {
-    if (isInstalled) {
-      navigate("/offline-player");
-      onClose();
-      return;
-    }
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const ua = navigator.userAgent;
+      const android = /Android/i.test(ua);
+      const windows = /Windows/i.test(ua);
+      const ios = (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) && !(window as any).MSStream;
 
-    if (isIOS) {
-      setShowManualGuide(true);
-      return;
+      setIsAndroid(android);
+      setIsWindows(windows);
+      setIsIOS(ios);
     }
+  }, []);
 
-    const outcome = await triggerInstall();
-    if (outcome === "accepted") {
-      setInstallSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    } else {
-      // If native programmatic prompt not exposed, show standard PWA browser guide
-      setShowManualGuide(true);
-    }
+  const handleDownloadAndroid = () => {
+    setDownloadStarted("android");
+    // Direct LAN download from Express Backend API
+    const downloadUrl = `${API_BASE_URL}/downloads/android-apk`;
+    window.location.href = downloadUrl;
+  };
+
+  const handleDownloadWindows = () => {
+    setDownloadStarted("windows");
+    // Direct LAN download from Express Backend API
+    const downloadUrl = `${API_BASE_URL}/downloads/windows-app`;
+    window.location.href = downloadUrl;
   };
 
   const handleOpenOfflinePlayer = () => {
@@ -80,19 +84,19 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
               <div className="flex items-center gap-3">
                 <img 
                   src="/pwa-192x192.png" 
-                  alt="SkillForge App" 
+                  alt="SkillForge Offline" 
                   className="w-12 h-12 rounded-2xl shadow-md border border-slate-100 object-cover" 
                 />
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                      SkillForge App
+                      SkillForge Offline
                     </h3>
-                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                      PWA
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      Native Client
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 font-semibold">Progressive Web Application</p>
+                  <p className="text-xs text-slate-400 font-semibold">Standalone Offline Course Player</p>
                 </div>
               </div>
 
@@ -105,115 +109,138 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({ isOpen, onClos
               </button>
             </div>
 
-            {/* If Already Installed or Just Installed */}
-            {isInstalled || installSuccess ? (
-              <div className="my-6 text-center space-y-4">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 size={36} />
+            {/* Feature Highlights Bento */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 my-6">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-2">
+                  <ShieldCheck size={18} />
                 </div>
-                <div>
-                  <h4 className="text-xl font-black text-slate-900">SkillForge is already installed</h4>
-                  <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto mt-1.5 leading-relaxed">
-                    SkillForge is installed as a standalone app on this device. You can launch it from your Desktop or Mobile Home Screen anytime offline.
-                  </p>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    onClick={handleOpenOfflinePlayer}
-                    className="w-full h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
-                  >
-                    <span>Open Offline Player</span>
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
+                <span className="text-xs font-black text-slate-900">100% Offline</span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">Router OFF &bull; 0 Wi-Fi</span>
               </div>
-            ) : (
-              <>
-                {/* Feature Highlights Bento */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 my-6">
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-2">
-                      <ShieldCheck size={18} />
-                    </div>
-                    <span className="text-xs font-black text-slate-900">100% Offline</span>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Works without internet</span>
-                  </div>
 
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center mb-2">
-                      <Plus size={18} />
-                    </div>
-                    <span className="text-xs font-black text-slate-900">Drag & Drop ZIP</span>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Auto-structures courses</span>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
-                    <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
-                      <Laptop size={18} />
-                    </div>
-                    <span className="text-xs font-black text-slate-900">Home Screen Icon</span>
-                    <span className="text-[10px] text-slate-400 font-medium mt-0.5">Desktop & Mobile app</span>
-                  </div>
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center mb-2">
+                  <Plus size={18} />
                 </div>
+                <span className="text-xs font-black text-slate-900">Drag & Drop ZIP</span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">Auto-structures courses</span>
+              </div>
 
-                {/* Device-Specific Guidance (If programmatic prompt not available) */}
-                {showManualGuide && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="mb-4 p-4 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-xs text-indigo-900 space-y-2.5 overflow-hidden"
-                  >
-                    {isIOS ? (
-                      <div>
-                        <div className="font-extrabold flex items-center gap-1.5 text-indigo-950 mb-1">
-                          <Smartphone size={15} className="text-indigo-600" />
-                          <span>Install on iPhone / iPad:</span>
-                        </div>
-                        <ol className="list-decimal list-inside space-y-1 text-slate-600 pl-1 text-[11px] leading-relaxed">
-                          <li>Tap the <strong>Share button (⎋)</strong> at the bottom of Safari.</li>
-                          <li>Scroll down and tap <strong>"Add to Home Screen" (+)</strong>.</li>
-                          <li>Tap <strong>Add</strong> at the top right to install SkillForge!</li>
-                        </ol>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="font-extrabold flex items-center gap-1.5 text-indigo-950 mb-1">
-                          <HelpCircle size={15} className="text-indigo-600" />
-                          <span>Install SkillForge in your Browser:</span>
-                        </div>
-                        <p className="text-slate-600 text-[11px] leading-relaxed">
-                          Look at your browser address bar at the top right and click the <strong>Install app (⊕)</strong> icon to add SkillForge to your Desktop / Taskbar.
-                        </p>
-                      </div>
-                    )}
-                  </motion.div>
-                )}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center text-center">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
+                  <HardDrive size={18} />
+                </div>
+                <span className="text-xs font-black text-slate-900">Saved Locally</span>
+                <span className="text-[10px] text-slate-400 font-medium mt-0.5">Permanent on device</span>
+              </div>
+            </div>
 
-                {/* Action Buttons */}
-                <div className="space-y-2 pt-1">
+            {/* Download Status Notification */}
+            {downloadStarted && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1.5"
+              >
+                <div className="font-black flex items-center gap-1.5 text-emerald-700 text-sm">
+                  <CheckCircle2 size={16} />
+                  <span>Download Started!</span>
+                </div>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  {downloadStarted === "android" 
+                    ? "Install the SkillForge-Offline.apk file on your Android phone. When prompted, tap 'Install' or 'Allow from this source'."
+                    : "Run the SkillForge-Offline installer on your PC. After installation, launch the app from your Desktop!"}
+                </p>
+              </motion.div>
+            )}
+
+            {/* Platform Download Actions */}
+            <div className="space-y-2.5 pt-1">
+              {/* If on Android -> Android APK is primary */}
+              {isAndroid ? (
+                <>
                   <button
-                    onClick={handleInstallClick}
-                    className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
+                    onClick={handleDownloadAndroid}
+                    className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
                   >
-                    <Download size={18} />
-                    <span>Install SkillForge App</span>
+                    <Smartphone size={18} className="text-emerald-400" />
+                    <span>Download Android App (.apk)</span>
                   </button>
 
                   <button
-                    onClick={handleOpenOfflinePlayer}
+                    onClick={handleDownloadWindows}
                     className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
-                    <span>Open Offline Player</span>
-                    <ExternalLink size={14} />
+                    <Laptop size={15} />
+                    <span>Download Windows Desktop App (.exe)</span>
+                  </button>
+                </>
+              ) : isWindows ? (
+                /* If on Windows -> Windows Installer is primary */
+                <>
+                  <button
+                    onClick={handleDownloadWindows}
+                    className="w-full h-13 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-slate-900/10 transition-all cursor-pointer"
+                  >
+                    <Laptop size={18} className="text-emerald-400" />
+                    <span>Download Windows Desktop App (.exe)</span>
+                  </button>
+
+                  <button
+                    onClick={handleDownloadAndroid}
+                    className="w-full h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Smartphone size={15} />
+                    <span>Download Android App (.apk)</span>
+                  </button>
+                </>
+              ) : isIOS ? (
+                /* If on iOS */
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
+                  <div className="font-extrabold flex items-center gap-1.5 text-amber-800">
+                    <Smartphone size={16} />
+                    <span>iOS Standalone Web App:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
+                    <li>Tap the <strong>Share button (⎋)</strong> at the bottom of Safari.</li>
+                    <li>Scroll down and tap <strong>"Add to Home Screen" (+)</strong>.</li>
+                    <li>Tap <strong>Add</strong> at top right to launch SkillForge standalone!</li>
+                  </ol>
+                </div>
+              ) : (
+                /* Fallback (Other OS) */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    onClick={handleDownloadAndroid}
+                    className="h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Smartphone size={15} className="text-emerald-400" />
+                    <span>Android APK</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadWindows}
+                    className="h-12 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Laptop size={15} className="text-emerald-400" />
+                    <span>Windows (.exe)</span>
                   </button>
                 </div>
-              </>
-            )}
+              )}
+
+              {/* Standalone Web Player Button */}
+              <button
+                onClick={handleOpenOfflinePlayer}
+                className="w-full h-11 rounded-2xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-transparent hover:border-slate-200"
+              >
+                <span>Open Standalone Web Player</span>
+                <ExternalLink size={13} />
+              </button>
+            </div>
 
             {/* Footer note */}
             <p className="text-[11px] text-slate-400 text-center font-medium mt-4">
-              Standards-Based Progressive Web Application (PWA)
+              Direct Local LAN Download &bull; Works 100% without internet
             </p>
           </motion.div>
         </div>

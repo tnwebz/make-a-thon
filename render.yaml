@@ -1,0 +1,43 @@
+services:
+  # 1. Backend Node.js API Web Service
+  - type: web
+    name: skillforge-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: NODE_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: skillforge-postgres
+          property: connectionString
+
+  # 2. Frontend Vite / React Static Site
+  - type: web
+    name: skillforge-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://skillforge-backend.onrender.com/api/v1
+
+databases:
+  # 3. Free Cloud PostgreSQL Database
+  - name: skillforge-postgres
+    plan: free
+    databaseName: skillforge_db
+    user: postgres

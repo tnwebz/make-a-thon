@@ -42,6 +42,17 @@ frontend/.env.local
 frontend/.env.production
 frontend/.env.development
 
+# --- Offline App & Native Builds ---
+offline-app/node_modules/
+offline-app/dist/
+offline-app/dist-electron/
+offline-app/android/.gradle/
+offline-app/android/build/
+offline-app/android/app/build/
+*.exe
+*.apk
+*.zip
+
 # --- OS ---
 .DS_Store
 Thumbs.db
