@@ -1,9 +1,26 @@
+# Uploads & Media
 uploads/
 *.mp4
 *.mkv
 *.mov
 *.avi
 *.webm
+*.flv
+*.m4v
 *.pdf
+*.zip
+*.exe
+*.apk
+public/downloads/
+downloads/
 !**/media/.gitkeep
 !**/thumbnails/.gitkeep
+
+# Environment & Dependencies
+node_modules/
+.env
+.env.local
+*.log
+*.db
+*.db-shm
+*.db-wal

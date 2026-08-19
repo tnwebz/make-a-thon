@@ -7,10 +7,29 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & Build
 node_modules
 dist
 dist-ssr
 *.local
+
+# Media & Large Binaries
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.zip
+*.exe
+*.apk
+public/downloads/
+downloads/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.development
 
 # Editor directories and files
 .vscode/*

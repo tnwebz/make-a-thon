@@ -1,6 +1,49 @@
 # =============================================
-# SkillForge .gitignore — Global
+# SkillForge .gitignore — Global Workspace
 # =============================================
+
+# --- Video, Audio & Media Files ---
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.flv
+*.wmv
+*.m4v
+*.mp3
+*.wav
+*.aac
+*.ogg
+
+# --- Large Binaries, Installers & Archives ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.exe
+*.apk
+*.msi
+*.dmg
+*.iso
+*.bin
+
+# --- Downloads Directories (Generated Binaries) ---
+backend/public/downloads/
+frontend/public/downloads/
+offline-app/dist-electron/
+public/downloads/
+downloads/
+
+# --- Uploads & Dynamic Storage ---
+uploads/
+backend/uploads/
+frontend/uploads/
+*.pdf
+!**/media/.gitkeep
+!**/thumbnails/.gitkeep
 
 # --- Python / Backend ---
 __pycache__/
@@ -18,55 +61,58 @@ backend/node_modules/
 backend/token.json
 backend/credentials.json
 backend/.env
-backend/uploads/
-uploads/
-*.mp4
-*.mkv
-*.mov
-*.avi
-*.webm
-*.log
-*.egg-info/
-dist/
-build/
-.eggs/
+lms.db
 
-# --- Node / Frontend ---
+# --- Node / Frontend & Offline App ---
+node_modules/
 frontend/node_modules/
+offline-app/node_modules/
 frontend/dist/
 frontend/.next/
 frontend/out/
 frontend/.cache/
+dist/
+dist-electron/
+build/
+.pnp
+.pnp.js
+
+# --- Environment Configuration ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 frontend/.env
 frontend/.env.local
-frontend/.env.production
-frontend/.env.development
+backend/.env
 
-# --- Offline App & Native Builds ---
-offline-app/node_modules/
-offline-app/dist/
-offline-app/dist-electron/
-offline-app/android/.gradle/
-offline-app/android/build/
-offline-app/android/app/build/
-*.exe
-*.apk
-*.zip
+# --- Android / Mobile Artifacts ---
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/app/*.iml
+android/captures/
+android/.cxx/
+android/app/.cxx/
+*.jks
+*.keystore
+*.ap_
 
-# --- OS ---
+# --- OS & Editor ---
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# --- IDE / Editor ---
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 .idea/
 *.suo
 *.user
 *.sln.docstates
-*.swp
-
-# --- Misc ---
+*.sw?
 *.tmp
 *.bak
 *~
