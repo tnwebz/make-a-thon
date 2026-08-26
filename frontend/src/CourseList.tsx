@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_BASE_URL } from "./config";
 import axios from "axios";
-import { PlusCircle, BookOpen, Trash2, Users, Star, Settings, Play, Share2 } from "lucide-react";
+import { PlusCircle, BookOpen, Trash2, Users, Star, Settings, Play, Share2, Globe, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 
 const CourseList = () => {
@@ -141,7 +141,17 @@ const CourseList = () => {
                                     </div>
 
                                     {/* Actions */}
-                                    <div className="mt-auto flex flex-col gap-3">
+                                    <div className="mt-auto flex flex-col gap-2.5">
+                                        <button
+                                            onClick={() => navigate(`/dashboard/course/${course.id}/builder?tab=Languages`)}
+                                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 hover:from-emerald-100 hover:to-teal-100 border border-emerald-200/80 text-emerald-800 px-3 py-2.5 rounded-2xl font-bold transition-all text-xs shadow-sm group"
+                                            title="AI Language Conversion (English -> Hindi)"
+                                        >
+                                            <Globe size={15} className="text-emerald-600 group-hover:rotate-12 transition-transform" />
+                                            <span>Translate Course (हिन्दी / தமிழ்)</span>
+                                            <Sparkles size={12} className="text-emerald-500" />
+                                        </button>
+
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => navigate(`/dashboard/course/${course.id}/builder`)}

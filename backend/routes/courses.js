@@ -1,7 +1,893 @@
 const express = require('express');
 const router = express.Router();
-const { Course, Module, ContentItem, Enrollment, LessonProgress, SchoolClass, CourseBatch, User } = require('../models');
+const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
+const { Course, Module, ContentItem, CourseVersion, ContentItemTranslation, VideoSubtitle, Enrollment, LessonProgress, SchoolClass, CourseBatch, User } = require('../models');
 const { authMiddleware, getPasswordHash } = require('../middleware/auth');
+
+const LANGUAGE_SERVICE_URL = process.env.LANGUAGE_SERVICE_URL || 'http://127.0.0.1:8001';
+
+// ============================================
+// 🌐 MULTILINGUAL / LANGUAGE CONVERSION ROUTES
+// ============================================
+
+/**
+ * GET /api/v1/courses/:course_id/languages
+ * Get all available language versions and video subtitle stats for this course (with dynamic real-time auditing)
+ */
+router.get('/:course_id/languages', authMiddleware, async (req, res) => {
+    try {
+        const course = await Course.findOne({
+            where: { id: req.params.course_id },
+            include: [
+                {
+                    model: Module,
+                    include: [{ model: ContentItem, as: 'items' }]
+                }
+            ]
+        });
+        if (!course) return res.status(404).json({ detail: "Course not found" });
+
+        // Collect all active item IDs and categorize
+        const activeItemIds = [];
+        const activeNoteItems = [];
+        const activeVideoItems = [];
+
+        if (course.Modules) {
+            course.Modules.forEach(m => {
+                if (m.items) {
+                    m.items.forEach(i => {
+                        activeItemIds.push(i.id);
+                        if (i.type === 'note' || (typeof i.content === 'string' && i.content.endsWith('.pdf'))) {
+                            activeNoteItems.push(i);
+                        }
+                        if (i.type === 'video' || (typeof i.content === 'string' && (i.content.endsWith('.mp4') || i.content.endsWith('.webm')))) {
+                            activeVideoItems.push(i);
+                        }
+                    });
+                }
+            });
+        }
+
+        const totalNotes = activeNoteItems.length;
+        const totalVideos = activeVideoItems.length;
+        const activeNoteIds = activeNoteItems.map(i => i.id);
+        const activeVideoIds = activeVideoItems.map(i => i.id);
+
+        // Clean up any orphaned translations whose content item was deleted
+        const allCourseItemIds = [];
+        if (course.Modules) {
+            course.Modules.forEach(m => m.items && m.items.forEach(i => allCourseItemIds.push(i.id)));
+        }
+
+        // Subtitles count
+        const readySubtitles = await VideoSubtitle.findAll({
+            where: { content_item_id: activeVideoIds, status: 'READY' }
+        });
+        const hindiSubsCount = readySubtitles.filter(s => s.language_code === 'hi').length;
+        const tamilSubsCount = readySubtitles.filter(s => s.language_code === 'ta').length;
+
+        // Process each target language
+        const targetLangs = ['hi', 'ta'];
+        const langData = {};
+
+        for (const lang of targetLangs) {
+            const [version] = await CourseVersion.findOrCreate({
+                where: { course_id: course.id, language_code: lang },
+                defaults: {
+                    title: course.title,
+                    status: 'NOT_GENERATED',
+                    progress: 0,
+                    total_files: totalNotes,
+                    completed_files: 0
+                }
+            });
+
+            // Find how many valid translations exist for CURRENT active note items
+            let completedNotes = 0;
+            if (activeNoteIds.length > 0) {
+                const translations = await ContentItemTranslation.findAll({
+                    where: {
+                        content_item_id: activeNoteIds,
+                        language_code: lang,
+                        status: 'READY'
+                    }
+                });
+                completedNotes = translations.length;
+            }
+
+            let computedStatus = version.status;
+            let computedProgress = version.progress;
+            let currentFile = version.current_file;
+
+            if (totalNotes === 0) {
+                // No notes in course
+                const subsReady = lang === 'hi' ? hindiSubsCount : tamilSubsCount;
+                if (totalVideos > 0 && subsReady > 0) {
+                    computedStatus = 'READY';
+                    computedProgress = 100;
+                } else if (version.status === 'GENERATING') {
+                    computedStatus = 'READY';
+                    computedProgress = 100;
+                } else if (version.status === 'READY') {
+                    computedStatus = 'READY';
+                    computedProgress = 100;
+                } else {
+                    computedStatus = 'NOT_GENERATED';
+                    computedProgress = 0;
+                }
+                currentFile = null;
+            } else {
+                // There are notes in the course
+                if (completedNotes === totalNotes) {
+                    computedStatus = 'READY';
+                    computedProgress = 100;
+                    currentFile = null;
+                } else if (version.status === 'GENERATING') {
+                    // Check if generation job is stale (> 3 minutes without update)
+                    const lastUpdated = new Date(version.updatedAt).getTime();
+                    const now = Date.now();
+                    if (now - lastUpdated > 180000) {
+                        computedStatus = completedNotes > 0 ? 'READY' : 'NOT_GENERATED';
+                        computedProgress = Math.round((completedNotes / totalNotes) * 100);
+                        currentFile = null;
+                    }
+                } else {
+                    computedStatus = completedNotes > 0 ? 'READY' : 'NOT_GENERATED';
+                    computedProgress = Math.round((completedNotes / totalNotes) * 100);
+                    currentFile = null;
+                }
+            }
+
+            // Sync database record
+            version.total_files = totalNotes;
+            version.completed_files = completedNotes;
+            version.status = computedStatus;
+            version.progress = computedProgress;
+            version.current_file = currentFile;
+            await version.save();
+
+            langData[lang] = {
+                status: computedStatus,
+                progress: computedProgress,
+                total_files: totalNotes,
+                completed_files: completedNotes,
+                current_file: currentFile,
+                error_message: version.error_message,
+                updated_at: version.updatedAt
+            };
+        }
+
+        const languages = [
+            {
+                language_code: 'en',
+                name: 'English',
+                nativeName: 'English',
+                flag: '🇬🇧',
+                status: 'READY',
+                is_original: true,
+                progress: 100,
+                total_videos: totalVideos,
+                subtitles_ready: totalVideos
+            },
+            {
+                language_code: 'hi',
+                name: 'Hindi',
+                nativeName: 'हिन्दी',
+                flag: '🇮🇳',
+                status: langData['hi'].status,
+                is_original: false,
+                progress: langData['hi'].progress,
+                total_files: langData['hi'].total_files,
+                completed_files: langData['hi'].completed_files,
+                current_file: langData['hi'].current_file,
+                error_message: langData['hi'].error_message,
+                updated_at: langData['hi'].updated_at,
+                total_videos: totalVideos,
+                subtitles_ready: hindiSubsCount
+            },
+            {
+                language_code: 'ta',
+                name: 'Tamil',
+                nativeName: 'தமிழ்',
+                flag: '🇮🇳',
+                status: langData['ta'].status,
+                is_original: false,
+                progress: langData['ta'].progress,
+                total_files: langData['ta'].total_files,
+                completed_files: langData['ta'].completed_files,
+                current_file: langData['ta'].current_file,
+                error_message: langData['ta'].error_message,
+                updated_at: langData['ta'].updated_at,
+                total_videos: totalVideos,
+                subtitles_ready: tamilSubsCount
+            }
+        ];
+
+        res.json({
+            course_id: course.id,
+            languages,
+            video_summary: {
+                total_videos: totalVideos,
+                hindi_subtitles_ready: hindiSubsCount,
+                tamil_subtitles_ready: tamilSubsCount
+            }
+        });
+    } catch (error) {
+        console.error("Fetch course languages error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+
+/**
+ * Helper to trigger language translation job (PDFs + Video Subtitles)
+ */
+async function triggerLanguageGeneration(req, res, targetLang) {
+    try {
+        const course = await Course.findOne({
+            where: { id: req.params.course_id, instructor_id: req.user.id },
+            include: [
+                {
+                    model: Module,
+                    include: [{ model: ContentItem, as: 'items' }]
+                }
+            ]
+        });
+
+        if (!course) {
+            return res.status(404).json({ detail: "Course not found or unauthorized" });
+        }
+
+        // Collect all PDF note assets and MP4 video assets
+        const pdfAssets = [];
+        const videoAssets = [];
+
+        if (course.Modules) {
+            course.Modules.forEach(mod => {
+                if (mod.items) {
+                    mod.items.forEach(item => {
+                        const isDiskFile = typeof item.content === 'string' && (item.content.startsWith('/uploads/') || item.content.startsWith('uploads/'));
+                        const isPdf = typeof item.content === 'string' && (
+                            item.content.toLowerCase().endsWith('.pdf') || 
+                            item.content.startsWith('data:application/pdf') ||
+                            (item.type === 'note' && isDiskFile)
+                        );
+                        const isVideo = (
+                            item.type === 'video' || 
+                            (typeof item.content === 'string' && (item.content.toLowerCase().endsWith('.mp4') || item.content.toLowerCase().endsWith('.webm')))
+                        ) && isDiskFile;
+
+                        if (isPdf && isDiskFile) {
+                            pdfAssets.push({
+                                content_item_id: item.id,
+                                title: item.title,
+                                source_url: item.content,
+                                module_title: mod.title
+                            });
+                        }
+
+                        if (isVideo) {
+                            videoAssets.push({
+                                content_item_id: item.id,
+                                title: item.title,
+                                source_url: item.content,
+                                module_title: mod.title
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        const totalTasks = pdfAssets.length + videoAssets.length;
+
+        // Upsert CourseVersion record
+        let [version] = await CourseVersion.findOrCreate({
+            where: { course_id: course.id, language_code: targetLang },
+            defaults: {
+                status: 'GENERATING',
+                progress: 5,
+                total_files: totalTasks,
+                completed_files: 0
+            }
+        });
+
+        version.status = 'GENERATING';
+        version.progress = 5;
+        version.total_files = totalTasks;
+        version.completed_files = 0;
+        version.error_message = null;
+        await version.save();
+
+        console.log(`🚀 [${targetLang.toUpperCase()} Generation] Dispatched for Course ${course.id} ("${course.title}"): ${pdfAssets.length} PDFs, ${videoAssets.length} Videos`);
+
+        // 1. Dispatch PDF translation if any
+        if (pdfAssets.length > 0) {
+            const pdfCallbackUrl = `http://127.0.0.1:${process.env.PORT || 8000}/api/v1/courses/${course.id}/languages/${targetLang}/progress`;
+            axios.post(`${LANGUAGE_SERVICE_URL}/api/courses/${course.id}/process`, {
+                course_id: course.id,
+                course_title: course.title,
+                pdf_assets: pdfAssets,
+                target_language: targetLang,
+                callback_url: pdfCallbackUrl
+            }).catch(err => {
+                console.warn(`[LanguageService PDF] Background notice: ${err.message}`);
+            });
+        }
+
+        // 2. Dispatch Video Subtitles generation if any
+        if (videoAssets.length > 0) {
+            const subCallbackUrl = `http://127.0.0.1:${process.env.PORT || 8000}/api/v1/courses/${course.id}/subtitles/${targetLang}/progress`;
+            axios.post(`${LANGUAGE_SERVICE_URL}/api/courses/${course.id}/subtitles/process`, {
+                course_id: course.id,
+                course_title: course.title,
+                video_assets: videoAssets,
+                target_language: targetLang,
+                callback_url: subCallbackUrl
+            }).catch(err => {
+                console.warn(`[LanguageService Subtitles] Background notice: ${err.message}`);
+            });
+        }
+
+        // If no assets to translate, mark READY immediately
+        if (totalTasks === 0) {
+            version.status = 'READY';
+            version.progress = 100;
+            await version.save();
+        }
+
+        res.json({
+            message: `${targetLang.toUpperCase()} translation job started successfully`,
+            status: totalTasks === 0 ? "READY" : "GENERATING",
+            course_id: course.id,
+            language_code: targetLang,
+            total_files: totalTasks,
+            pdf_count: pdfAssets.length,
+            video_count: videoAssets.length
+        });
+
+    } catch (error) {
+        console.error(`Trigger ${targetLang} generation error:`, error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+}
+
+/**
+ * POST /api/v1/courses/:course_id/languages/:lang/generate
+ */
+router.post('/:course_id/languages/:lang/generate', authMiddleware, async (req, res) => {
+    const lang = req.params.lang || 'hi';
+    return triggerLanguageGeneration(req, res, lang);
+});
+
+/**
+ * POST /api/v1/courses/:course_id/subtitles/:lang/generate
+ * Dedicated trigger for generating only video subtitles
+ */
+router.post('/:course_id/subtitles/:lang/generate', authMiddleware, async (req, res) => {
+    try {
+        const targetLang = req.params.lang || 'hi';
+        const course = await Course.findOne({
+            where: { id: req.params.course_id, instructor_id: req.user.id },
+            include: [
+                {
+                    model: Module,
+                    include: [{ model: ContentItem, as: 'items' }]
+                }
+            ]
+        });
+
+        if (!course) return res.status(404).json({ detail: "Course not found or unauthorized" });
+
+        const videoAssets = [];
+        if (course.Modules) {
+            course.Modules.forEach(mod => {
+                if (mod.items) {
+                    mod.items.forEach(item => {
+                        const isDiskFile = typeof item.content === 'string' && (item.content.startsWith('/uploads/') || item.content.startsWith('uploads/'));
+                        const isVideo = (
+                            item.type === 'video' || 
+                            (typeof item.content === 'string' && (item.content.toLowerCase().endsWith('.mp4') || item.content.toLowerCase().endsWith('.webm')))
+                        ) && isDiskFile;
+
+                        if (isVideo) {
+                            videoAssets.push({
+                                content_item_id: item.id,
+                                title: item.title,
+                                source_url: item.content,
+                                module_title: mod.title
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        if (videoAssets.length === 0) {
+            return res.json({ message: "No eligible disk MP4 video files found in this course", total_videos: 0 });
+        }
+
+        const subCallbackUrl = `http://127.0.0.1:${process.env.PORT || 8000}/api/v1/courses/${course.id}/subtitles/${targetLang}/progress`;
+        axios.post(`${LANGUAGE_SERVICE_URL}/api/courses/${course.id}/subtitles/process`, {
+            course_id: course.id,
+            course_title: course.title,
+            video_assets: videoAssets,
+            target_language: targetLang,
+            callback_url: subCallbackUrl
+        }).catch(err => {
+            console.warn(`[Subtitle Trigger] Background notice: ${err.message}`);
+        });
+
+        res.json({
+            message: `${targetLang.toUpperCase()} video subtitle generation started`,
+            course_id: course.id,
+            language_code: targetLang,
+            total_videos: videoAssets.length
+        });
+    } catch (error) {
+        console.error("Trigger subtitles error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+/**
+ * GET /api/v1/courses/:course_id/languages/:lang/status
+ */
+router.get('/:course_id/languages/:lang/status', authMiddleware, async (req, res) => {
+    try {
+        const lang = req.params.lang || 'hi';
+        const course = await Course.findOne({
+            where: { id: req.params.course_id },
+            include: [
+                {
+                    model: Module,
+                    include: [{ model: ContentItem, as: 'items' }]
+                }
+            ]
+        });
+        if (!course) return res.status(404).json({ detail: "Course not found" });
+
+        // Count active notes
+        const activeNoteIds = [];
+        if (course.Modules) {
+            course.Modules.forEach(m => {
+                if (m.items) {
+                    m.items.forEach(i => {
+                        if (i.type === 'note' || (typeof i.content === 'string' && i.content.endsWith('.pdf'))) {
+                            activeNoteIds.push(i.id);
+                        }
+                    });
+                }
+            });
+        }
+        const totalNotes = activeNoteIds.length;
+
+        const version = await CourseVersion.findOne({
+            where: { course_id: req.params.course_id, language_code: lang }
+        });
+
+        if (!version) {
+            return res.json({
+                language: lang,
+                status: 'NOT_GENERATED',
+                progress: 0,
+                total_files: totalNotes,
+                completed_files: 0,
+                current_file: null
+            });
+        }
+
+        let completedNotes = 0;
+        if (activeNoteIds.length > 0) {
+            const translations = await ContentItemTranslation.findAll({
+                where: {
+                    content_item_id: activeNoteIds,
+                    language_code: lang,
+                    status: 'READY'
+                }
+            });
+            completedNotes = translations.length;
+        }
+
+        let computedStatus = version.status;
+        let computedProgress = version.progress;
+        let currentFile = version.current_file;
+
+        if (totalNotes === 0) {
+            computedStatus = 'READY';
+            computedProgress = 100;
+            currentFile = null;
+        } else if (completedNotes === totalNotes) {
+            computedStatus = 'READY';
+            computedProgress = 100;
+            currentFile = null;
+        } else if (version.status === 'GENERATING') {
+            const lastUpdated = new Date(version.updatedAt).getTime();
+            if (Date.now() - lastUpdated > 180000) {
+                computedStatus = completedNotes > 0 ? 'READY' : 'NOT_GENERATED';
+                computedProgress = Math.round((completedNotes / totalNotes) * 100);
+                currentFile = null;
+            }
+        }
+
+        version.total_files = totalNotes;
+        version.completed_files = completedNotes;
+        version.status = computedStatus;
+        version.progress = computedProgress;
+        version.current_file = currentFile;
+        await version.save();
+
+        res.json({
+            language: lang,
+            status: computedStatus,
+            progress: computedProgress,
+            total_files: totalNotes,
+            completed_files: completedNotes,
+            current_file: currentFile,
+            error_message: version.error_message,
+            updated_at: version.updatedAt
+        });
+    } catch (error) {
+        console.error("Fetch language status error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+
+/**
+ * POST /api/v1/courses/:course_id/languages/:lang/progress
+ * Webhook/callback from Python Language Service to update PDF progress
+ */
+router.post('/:course_id/languages/:lang/progress', async (req, res) => {
+    try {
+        const targetLang = req.params.lang || req.body.language_code || 'hi';
+        const { course_id, status, progress, total_files, completed_files, current_file, translated_title, results } = req.body;
+
+        const version = await CourseVersion.findOne({
+            where: { course_id: course_id, language_code: targetLang }
+        });
+
+        if (version) {
+            if (status) version.status = status;
+            if (progress !== undefined) version.progress = progress;
+            if (total_files !== undefined) version.total_files = total_files;
+            if (completed_files !== undefined) version.completed_files = completed_files;
+            if (current_file !== undefined) version.current_file = current_file;
+            if (translated_title) version.title = translated_title;
+            await version.save();
+        }
+
+        // Save individual translated asset records
+        if (Array.isArray(results)) {
+            for (const r of results) {
+                if (r.content_item_id && r.content) {
+                    await ContentItemTranslation.upsert({
+                        content_item_id: r.content_item_id,
+                        language_code: targetLang,
+                        title: r.title,
+                        content: r.content,
+                        status: r.status || 'READY'
+                    });
+                }
+            }
+        }
+
+        console.log(`📊 [${targetLang.toUpperCase()} PDF Progress] Course ${course_id}: ${status} (${progress}%) - ${completed_files}/${total_files}`);
+        res.json({ ok: true });
+    } catch (error) {
+        console.error("Update PDF progress webhook error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+/**
+ * POST /api/v1/courses/:course_id/subtitles/:lang/progress
+ * Webhook/callback from Python Subtitle Processor to update VideoSubtitle records
+ */
+router.post('/:course_id/subtitles/:lang/progress', async (req, res) => {
+    try {
+        const targetLang = req.params.lang || req.body.language_code || 'hi';
+        const { course_id, status, progress, total_videos, completed_videos, current_file, results } = req.body;
+
+        if (Array.isArray(results)) {
+            for (const r of results) {
+                if (r.content_item_id && r.vtt_path) {
+                    const [sub] = await VideoSubtitle.findOrCreate({
+                        where: {
+                            content_item_id: r.content_item_id,
+                            language_code: targetLang
+                        },
+                        defaults: {
+                            vtt_path: r.vtt_path,
+                            transcript_path: r.transcript_path,
+                            status: r.status || 'READY',
+                            segment_count: r.segment_count || 0,
+                            duration_seconds: r.duration_seconds || 0
+                        }
+                    });
+
+                    sub.vtt_path = r.vtt_path;
+                    sub.transcript_path = r.transcript_path;
+                    sub.status = r.status || 'READY';
+                    sub.segment_count = r.segment_count || 0;
+                    sub.duration_seconds = r.duration_seconds || 0;
+                    await sub.save();
+                }
+            }
+        }
+
+        console.log(`🎬 [${targetLang.toUpperCase()} Subtitle Progress] Course ${course_id}: ${status} (${progress}%) - ${completed_videos}/${total_videos}`);
+        res.json({ ok: true });
+    } catch (error) {
+        console.error("Update subtitle progress webhook error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+router.get('/:course_id/player', authMiddleware, async (req, res) => {
+    try {
+        const requestedLang = req.query.lang || 'en';
+        const course = await Course.findOne({ 
+            where: { id: req.params.course_id },
+            include: [
+                {
+                    model: Module,
+                    include: [
+                        { model: ContentItem, as: 'items' }
+                    ]
+                }
+            ]
+        });
+        if (!course) return res.status(404).json({ detail: "Course not found" });
+
+        // Collect all content item IDs
+        const itemIds = [];
+        if (course.Modules) {
+            course.Modules.forEach(m => {
+                if (m.items) m.items.forEach(i => itemIds.push(i.id));
+            });
+        }
+
+        // Fetch all ready VideoSubtitles for items in this course
+        const allSubtitles = await VideoSubtitle.findAll({
+            where: { content_item_id: itemIds, status: 'READY' }
+        });
+        const subtitleMap = {}; // { itemId: { hi: vtt_path, ta: vtt_path } }
+        allSubtitles.forEach(s => {
+            if (!subtitleMap[s.content_item_id]) subtitleMap[s.content_item_id] = {};
+            subtitleMap[s.content_item_id][s.language_code] = s;
+        });
+
+        // Check available ready languages
+        const versions = await CourseVersion.findAll({
+            where: { course_id: course.id, status: 'READY' }
+        });
+        const readyLangMap = {};
+        versions.forEach(v => { readyLangMap[v.language_code] = v; });
+
+        const availableLanguages = [
+            { code: 'en', name: 'English', nativeName: 'English', ready: true }
+        ];
+        if (readyLangMap['hi'] || allSubtitles.some(s => s.language_code === 'hi')) {
+            availableLanguages.push({ code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', ready: true });
+        }
+        if (readyLangMap['ta'] || allSubtitles.some(s => s.language_code === 'ta')) {
+            availableLanguages.push({ code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', ready: true });
+        }
+
+        const isRequestedReady = requestedLang !== 'en' && (readyLangMap[requestedLang] || allSubtitles.some(s => s.language_code === requestedLang));
+        let translationMap = {};
+        let activeTitle = course.title;
+        let activeDescription = course.description;
+
+        if (isRequestedReady) {
+            const currentVer = readyLangMap[requestedLang];
+            if (currentVer && currentVer.title) activeTitle = currentVer.title;
+            if (currentVer && currentVer.description) activeDescription = currentVer.description;
+
+            const translations = await ContentItemTranslation.findAll({
+                where: { content_item_id: itemIds, language_code: requestedLang, status: 'READY' }
+            });
+
+            translations.forEach(t => {
+                translationMap[t.content_item_id] = t;
+            });
+        }
+
+        // Format for frontend
+        const responseData = {
+            id: course.id,
+            title: activeTitle,
+            original_title: course.title,
+            description: activeDescription,
+            price: course.price,
+            image_url: course.image_url,
+            is_published: course.is_published,
+            is_finalized: course.is_finalized,
+            current_language: isRequestedReady ? requestedLang : 'en',
+            available_languages: availableLanguages,
+            modules: course.Modules ? course.Modules.map(m => ({
+                id: m.id,
+                title: m.title,
+                order: m.order,
+                lessons: m.items ? m.items.map(i => {
+                    const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
+                    let contentValue = isBase64 ? `/api/v1/content/media/${i.id}` : i.content;
+                    let lessonTitle = i.title;
+                    let isTranslated = false;
+
+                    if (isRequestedReady && translationMap[i.id]) {
+                        contentValue = translationMap[i.id].content;
+                        if (translationMap[i.id].title) lessonTitle = translationMap[i.id].title;
+                        isTranslated = true;
+                    }
+
+                    // Attach subtitle metadata for video lessons
+                    const itemSubs = subtitleMap[i.id] || {};
+                    let activeSubtitleUrl = null;
+                    let activeTranscriptUrl = null;
+
+                    if (requestedLang !== 'en' && itemSubs[requestedLang]) {
+                        activeSubtitleUrl = itemSubs[requestedLang].vtt_path;
+                        activeTranscriptUrl = itemSubs[requestedLang].transcript_path;
+                    }
+
+
+                    const availableTracks = [];
+                    if (itemSubs['hi']) {
+                        availableTracks.push({
+                            lang: 'hi',
+                            label: 'हिन्दी',
+                            src: itemSubs['hi'].vtt_path,
+                            segments: itemSubs['hi'].segment_count
+                        });
+                    }
+                    if (itemSubs['ta']) {
+                        availableTracks.push({
+                            lang: 'ta',
+                            label: 'தமிழ்',
+                            src: itemSubs['ta'].vtt_path,
+                            segments: itemSubs['ta'].segment_count
+                        });
+                    }
+
+                    return {
+                        id: i.id,
+                        title: lessonTitle,
+                        type: i.type,
+                        content: contentValue,
+                        duration: i.duration,
+                        is_mandatory: i.is_mandatory,
+                        order: i.order,
+                        instructions: i.instructions,
+                        is_translated: isTranslated,
+                        subtitle_url: activeSubtitleUrl,
+                        transcript_url: activeTranscriptUrl,
+                        subtitles: availableTracks
+                    };
+                }) : []
+            })) : []
+        };
+        res.json(responseData);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+router.get('/:course_id/export', authMiddleware, async (req, res) => {
+    try {
+        const requestedLang = req.query.lang || 'en';
+        const course = await Course.findOne({ 
+            where: { id: req.params.course_id },
+            include: [
+                {
+                    model: Module,
+                    include: [
+                        { model: ContentItem, as: 'items' }
+                    ]
+                }
+            ]
+        });
+        if (!course) return res.status(404).json({ detail: "Course not found" });
+
+        const itemIds = [];
+        if (course.Modules) {
+            course.Modules.forEach(m => {
+                if (m.items) m.items.forEach(i => itemIds.push(i.id));
+            });
+        }
+
+        const allSubtitles = await VideoSubtitle.findAll({
+            where: { content_item_id: itemIds, status: 'READY' }
+        });
+        const subtitleMap = {};
+        allSubtitles.forEach(s => {
+            if (!subtitleMap[s.content_item_id]) subtitleMap[s.content_item_id] = {};
+            subtitleMap[s.content_item_id][s.language_code] = s;
+        });
+
+        const versions = await CourseVersion.findAll({
+            where: { course_id: course.id, status: 'READY' }
+        });
+        const readyLangMap = {};
+        versions.forEach(v => { readyLangMap[v.language_code] = v; });
+
+        const isRequestedReady = requestedLang !== 'en' && readyLangMap[requestedLang];
+        let translationMap = {};
+        let activeTitle = course.title;
+
+        if (isRequestedReady) {
+            const currentVer = readyLangMap[requestedLang];
+            if (currentVer.title) activeTitle = currentVer.title;
+            const translations = await ContentItemTranslation.findAll({
+                where: { language_code: requestedLang, status: 'READY' }
+            });
+            translations.forEach(t => translationMap[t.content_item_id] = t);
+        }
+
+        // Build the complete skillforge export JSON with subtitle tracks
+        const exportData = {
+            metadata: {
+                id: course.id.toString(),
+                title: activeTitle,
+                original_title: course.title,
+                language: isRequestedReady ? requestedLang : 'en',
+                description: course.description,
+                price: course.price,
+                image_url: course.image_url,
+                instructor_id: course.instructor_id ? course.instructor_id.toString() : '',
+                exported_at: new Date().toISOString()
+            },
+            modules: course.Modules ? course.Modules.map(m => ({
+                id: m.id.toString(),
+                title: m.title,
+                order: m.order,
+                lessons: m.items ? m.items.map(i => {
+                    const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
+                    let contentValue = isBase64 ? '' : i.content;
+                    let mediaUrl = isBase64 ? `/api/v1/content/media/${i.id}` : null;
+                    let lessonTitle = i.title;
+
+                    if (isRequestedReady && translationMap[i.id]) {
+                        contentValue = translationMap[i.id].content;
+                        if (translationMap[i.id].title) lessonTitle = translationMap[i.id].title;
+                    }
+
+                    const itemSubs = subtitleMap[i.id] || {};
+                    const subsList = [];
+                    if (itemSubs['hi']) {
+                        subsList.push({ lang: 'hi', vtt_path: itemSubs['hi'].vtt_path });
+                    }
+                    if (itemSubs['ta']) {
+                        subsList.push({ lang: 'ta', vtt_path: itemSubs['ta'].vtt_path });
+                    }
+
+                    return {
+                        id: i.id.toString(),
+                        title: lessonTitle,
+                        type: i.type,
+                        content: contentValue,
+                        media_url: mediaUrl,
+                        duration: i.duration,
+                        instructions: i.instructions,
+                        test_config: i.test_config,
+                        is_mandatory: i.is_mandatory,
+                        order: i.order,
+                        subtitles: subsList
+                    };
+                }) : []
+            })) : []
+        };
+        res.json(exportData);
+    } catch (error) {
+        console.error("Export error:", error);
+
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
 
 router.get('/instructor/batches', authMiddleware, async (req, res) => {
     try {
@@ -81,18 +967,44 @@ router.post('/', authMiddleware, async (req, res) => {
 
 router.get('/:course_id/player', authMiddleware, async (req, res) => {
     try {
+        const lang = req.query.lang || 'en';
         const course = await Course.findOne({ 
             where: { id: req.params.course_id },
             include: [
                 {
                     model: Module,
                     include: [
-                        { model: ContentItem, as: 'items' }
+                        { 
+                            model: ContentItem, 
+                            as: 'items',
+                            include: [
+                                { model: ContentItemTranslation, as: 'translations' }
+                            ]
+                        }
                     ]
+                },
+                {
+                    model: CourseVersion,
+                    as: 'versions'
                 }
             ]
         });
         if (!course) return res.status(404).json({ detail: "Course not found" });
+
+        // Available languages
+        const availableLanguages = [
+            { language_code: 'en', name: 'English (Original)', status: 'READY' }
+        ];
+        if (course.versions) {
+            course.versions.forEach(v => {
+                availableLanguages.push({
+                    language_code: v.language_code,
+                    name: v.language_code === 'hi' ? 'हिन्दी (Hindi)' : v.language_code,
+                    status: v.status,
+                    progress: v.progress
+                });
+            });
+        }
 
         // Format for frontend
         const responseData = {
@@ -103,21 +1015,36 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
             image_url: course.image_url,
             is_published: course.is_published,
             is_finalized: course.is_finalized,
+            current_lang: lang,
+            available_languages: availableLanguages,
             modules: course.Modules ? course.Modules.map(m => ({
                 id: m.id,
                 title: m.title,
                 order: m.order,
                 lessons: m.items ? m.items.map(i => {
                     const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
+                    let lessonContent = isBase64 ? `/api/v1/content/media/${i.id}` : i.content;
+                    let lessonTitle = i.title;
+                    let lessonInstructions = i.instructions;
+
+                    if (lang !== 'en' && i.translations && i.translations.length > 0) {
+                        const targetTrans = i.translations.find(t => t.language_code === lang);
+                        if (targetTrans) {
+                            if (targetTrans.title) lessonTitle = targetTrans.title;
+                            if (targetTrans.content) lessonContent = targetTrans.content;
+                            if (targetTrans.instructions) lessonInstructions = targetTrans.instructions;
+                        }
+                    }
+
                     return {
                         id: i.id,
-                        title: i.title,
+                        title: lessonTitle,
                         type: i.type,
-                        content: isBase64 ? `/api/v1/content/media/${i.id}` : i.content,
+                        content: lessonContent,
                         duration: i.duration,
                         is_mandatory: i.is_mandatory,
                         order: i.order,
-                        instructions: i.instructions
+                        instructions: lessonInstructions
                     };
                 }) : []
             })) : []

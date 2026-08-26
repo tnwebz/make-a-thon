@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
 body {
   background-color: #f8fafc;
   margin: 0;
@@ -11,6 +18,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   user-select: none;
+}
+
+/* Safe Area Insets for Android & iOS Status Bar */
+.pt-safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 34px);
+}
+
+@media (min-width: 1024px) {
+  .pt-safe-top {
+    padding-top: 1.5rem;
+  }
 }
 
 ::-webkit-scrollbar {

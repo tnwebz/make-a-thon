@@ -51,11 +51,11 @@ const shareAuthMiddleware = async (req, res, next) => {
             return res.status(403).json({ detail: "Token does not match this share session" });
         }
 
-        // Attach share context to request
+        // Attach share context to request (always using latest live session.accessMode from DB)
         req.share = {
-            shareCode: payload.shareCode,
-            courseId: payload.courseId,
-            accessMode: payload.accessMode,
+            shareCode: session.shareCode,
+            courseId: session.courseId,
+            accessMode: session.accessMode,
             clientId: payload.clientId || req.query.clientId || null,
             studentName: payload.studentName || null,
             session: session

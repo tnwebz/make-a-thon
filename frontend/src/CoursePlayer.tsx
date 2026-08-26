@@ -1,19 +1,19 @@
-import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
-import Plyr from "plyr-react";
-import "plyr/dist/plyr.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { GlassToast } from "./components/GlassToast";
 
 import {
   PlayCircle, FileText, ChevronLeft, Menu, Code, HelpCircle,
   UploadCloud, CheckCircle, ChevronDown, ChevronRight, Lock,
-  Unlock, Award, Play, Save, Monitor, Cpu, ExternalLink, Download, Loader2
+  Unlock, Award, Play, Save, Monitor, Cpu, ExternalLink, Download, Loader2,
+  Globe, Sparkles
 } from "lucide-react";
 
-import { API_BASE_URL } from "./config";
+import { API_BASE_URL, resolveMediaUrl } from "./config";
+
 
 // --- 💻 COMPONENT: PROFESSIONAL CODE ARENA ---
 const CodeCompiler = ({ lesson }: { lesson: any }) => {
@@ -156,15 +156,84 @@ const WindowsLoader = () => {
     );
 };
 
+// --- 📝 WEBVTT PARSER & TIMESTAMPS ---
+interface SubtitleCue {
+  start: number;
+  end: number;
+  text: string;
+}
+
+const parseWebVTT = (vttText: string): SubtitleCue[] => {
+  const cues: SubtitleCue[] = [];
+  const lines = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  let currentStart: number | null = null;
+  let currentEnd: number | null = null;
+  let currentTextLines: string[] = [];
+
+  const timeToSeconds = (timeStr: string): number => {
+    const clean = timeStr.trim().replace(',', '.');
+    const parts = clean.split(':');
+    if (parts.length === 3) {
+      const [h, m, s] = parts;
+      return parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s);
+    } else if (parts.length === 2) {
+      const [m, s] = parts;
+      return parseFloat(m) * 60 + parseFloat(s);
+    }
+    return parseFloat(clean) || 0;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.includes('-->')) {
+      const parts = line.split('-->');
+      if (parts.length === 2) {
+        currentStart = timeToSeconds(parts[0]);
+        currentEnd = timeToSeconds(parts[1].trim().split(' ')[0]);
+        currentTextLines = [];
+      }
+    } else if (currentStart !== null && currentEnd !== null) {
+      if (line === '') {
+        if (currentTextLines.length > 0) {
+          cues.push({
+            start: currentStart,
+            end: currentEnd,
+            text: currentTextLines.join(' ')
+          });
+          currentStart = null;
+          currentEnd = null;
+          currentTextLines = [];
+        }
+      } else if (!/^\d+$/.test(line) && !line.startsWith('NOTE') && !line.startsWith('WEBVTT')) {
+        currentTextLines.push(line);
+      }
+    }
+  }
+
+  if (currentStart !== null && currentEnd !== null && currentTextLines.length > 0) {
+    cues.push({
+      start: currentStart,
+      end: currentEnd,
+      text: currentTextLines.join(' ')
+    });
+  }
+
+  return cues;
+};
+
 // --- MAIN PLAYER COMPONENT ---
 const CoursePlayer = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [currentLang, setCurrentLang] = useState<string>(searchParams.get("lang") || "en");
+  
   const [course, setCourse] = useState<any>(() => {
+    // Attempt cache first for instantaneous offline capability
     try {
       const cached = localStorage.getItem(`cached_course_player_${courseId}`);
       return cached ? JSON.parse(cached) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
@@ -177,6 +246,13 @@ const CoursePlayer = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
 
+  // 🎬 Video Subtitles & Synced Overlay State
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const currentBlobUrlRef = useRef<string | null>(null);
+  const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
+  const [currentSubtitleText, setCurrentSubtitleText] = useState<string | null>(null);
+  const [blobTrackUrl, setBlobTrackUrl] = useState<string | null>(null);
+
   const [toast, setToast] = useState({ show: false, msg: "", type: "success" });
   const [showPendingCertModal, setShowPendingCertModal] = useState(false);
   const triggerToast = (msg: string, type: "success" | "error" = "success") => {
@@ -184,45 +260,143 @@ const CoursePlayer = () => {
     setTimeout(() => setToast({ show: false, msg: "", type }), 4000);
   };
 
-  // 🎯 THE BULLETPROOF YOUTUBE OVERRIDE (Untouched logic)
-  const plyrOptions = useMemo(() => ({
-    controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume'],
-    youtube: {
-      noCookie: true,
-      rel: 0,
-      showinfo: 0,
-      iv_load_policy: 3,
-      modestbranding: 1,
-      disablekb: 1
-    },
-  }), []);
+  // 📡 Fetch Subtitles & Create Same-Origin Blob URL
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSubtitles = async () => {
+      if (!activeLesson || currentLang === 'en') {
+        if (isMounted) {
+          setSubtitleCues([]);
+          setCurrentSubtitleText(null);
+          setBlobTrackUrl(null);
+        }
+        return;
+      }
+
+      // Find subtitle URL for requested language
+      let subUrl = activeLesson.subtitle_url;
+      if (!subUrl && Array.isArray(activeLesson.subtitles)) {
+        const match = activeLesson.subtitles.find((s: any) => s.lang === currentLang);
+        if (match) subUrl = match.src;
+      }
+
+      if (!subUrl) {
+        if (isMounted) {
+          setSubtitleCues([]);
+          setCurrentSubtitleText(null);
+          setBlobTrackUrl(null);
+        }
+        return;
+      }
+
+      try {
+        const fullUrl = resolveMediaUrl(subUrl);
+        const res = await axios.get(fullUrl, { responseType: 'text' });
+        const vttContent = res.data;
+
+        if (typeof vttContent === 'string' && vttContent.includes('WEBVTT')) {
+          const parsed = parseWebVTT(vttContent);
+          const blob = new Blob([vttContent], { type: 'text/vtt; charset=utf-8' });
+          const newBlobUrl = URL.createObjectURL(blob);
+
+          if (isMounted) {
+            if (currentBlobUrlRef.current && currentBlobUrlRef.current !== newBlobUrl) {
+              try { URL.revokeObjectURL(currentBlobUrlRef.current); } catch (e) {}
+            }
+            currentBlobUrlRef.current = newBlobUrl;
+            setSubtitleCues(parsed);
+            setBlobTrackUrl(newBlobUrl);
+          } else {
+            try { URL.revokeObjectURL(newBlobUrl); } catch (e) {}
+          }
+        }
+      } catch (e) {
+        console.warn("Could not load subtitle track:", e);
+      }
+    };
+
+    loadSubtitles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeLesson?.id, activeLesson?.subtitle_url, currentLang]);
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (currentBlobUrlRef.current) {
+        try { URL.revokeObjectURL(currentBlobUrlRef.current); } catch (e) {}
+      }
+    };
+  }, []);
+
+  // ⏱️ Synchronize Subtitles to Video Time Update
+  useEffect(() => {
+    if (subtitleCues.length === 0 || currentLang === 'en') {
+      setCurrentSubtitleText(null);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const video = videoContainerRef.current?.querySelector('video');
+      if (video) {
+        const time = video.currentTime;
+        const active = subtitleCues.find(c => time >= c.start && time <= c.end);
+        setCurrentSubtitleText(active ? active.text : null);
+      }
+    }, 80);
+
+    return () => clearInterval(interval);
+  }, [subtitleCues, currentLang]);
+
+
 
   useEffect(() => {
     const fetchCourse = async () => {
       try {
         const token = localStorage.getItem("token");
-        const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/player`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/player?lang=${currentLang}`, { headers: { Authorization: `Bearer ${token}` } });
         setCourse(res.data);
         setCompletedLessons(res.data.completed_lessons || []);
         
-        // Cache this course data for offline usage
-        localStorage.setItem(`cached_course_player_${courseId}`, JSON.stringify(res.data));
+        // Cache this course data for offline usage (safely catch quota exceptions)
+        try {
+          localStorage.setItem(`cached_course_player_${courseId}_${currentLang}`, JSON.stringify(res.data));
+        } catch (storageErr) {
+          console.warn("Storage quota exceeded, continuing without local cache update.");
+        }
 
-        if (res.data.modules?.[0]) {
+        if (!activeLesson && res.data.modules?.[0]) {
           setExpandedModules([res.data.modules[0].id]);
           if (res.data.modules[0].lessons?.length > 0) setActiveLesson(res.data.modules[0].lessons[0]);
+        } else if (activeLesson && res.data.modules) {
+          // Keep same active lesson but updated content if lang switched
+          for (const m of res.data.modules) {
+            const found = m.lessons?.find((l: any) => l.id === activeLesson.id);
+            if (found) {
+              setActiveLesson(found);
+              break;
+            }
+          }
         }
       } catch (err) { 
         console.error(err); 
         // If offline and we loaded a cached course, auto-select first lesson so player works
-        if (course && course.modules?.[0]) {
+        if (course && course.modules?.[0] && !activeLesson) {
           setExpandedModules([course.modules[0].id]);
           if (course.modules[0].lessons?.length > 0) setActiveLesson(course.modules[0].lessons[0]);
         }
       }
     };
     fetchCourse();
-  }, [courseId]);
+  }, [courseId, currentLang]);
+
+  const handleLanguageChange = (langCode: string) => {
+    setCurrentLang(langCode);
+    setSearchParams(langCode === 'en' ? {} : { lang: langCode });
+  };
 
   useEffect(() => {
     if (activeLesson) {
@@ -273,7 +447,19 @@ const CoursePlayer = () => {
     }
   };
 
-  const getEmbedUrl = (content: string) => content ? (content.includes("docs.google.com/forms") ? content.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true") : content.replace("/view", "/preview")) : "";
+  const getEmbedUrl = (content: string) => {
+    if (!content) return "";
+    if (content.startsWith("/uploads/") || content.startsWith("uploads/")) {
+      return resolveMediaUrl(content);
+    }
+    if (content.includes("docs.google.com/forms")) {
+      return content.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true");
+    }
+    if (content.includes("drive.google.com")) {
+      return content.replace("/view", "/preview");
+    }
+    return resolveMediaUrl(content);
+  };
   const getYoutubeId = (content: string) => { const match = content?.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/); return (match && match[2].length === 11) ? match[2] : null; };
 
   const handleDownloadYoutube = async (url: string, title: string) => {
@@ -332,15 +518,32 @@ const CoursePlayer = () => {
         <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center w-full p-8 md:p-12">
 
           {activeLesson.type === "note" && (
-            <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
+            <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto flex flex-col p-2">
+              <div className="px-5 py-2.5 bg-white rounded-t-[1.5rem] border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText size={16} className="text-amber-500" />
+                  <span className="text-xs font-bold text-slate-800 truncate">{activeLesson.title}</span>
+                </div>
+                {currentLang === 'hi' && (
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                    <Sparkles size={11} className="text-emerald-500" /> हिन्दी PDF
+                  </span>
+                )}
+                {currentLang === 'ta' && (
+                  <span className="bg-cyan-50 text-cyan-700 border border-cyan-200 text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
+                    <Sparkles size={11} className="text-cyan-500" /> தமிழ் PDF
+                  </span>
+                )}
+              </div>
               {activeLesson.content ? (
                 <iframe 
+                  key={`${activeLesson.id}-${currentLang}-${activeLesson.content}`}
                   src={getEmbedUrl(activeLesson.content)} 
-                  className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
+                  className="w-full h-full flex-1 rounded-b-[1.5rem] border-0 bg-white" 
                   onLoad={() => setContentLoading(false)}
                 />
               ) : (
-                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem]">No notes uploaded</div>
+                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-b-[1.5rem]">No notes uploaded</div>
               )}
             </div>
           )}
@@ -361,7 +564,10 @@ const CoursePlayer = () => {
 
           {(activeLesson.type === "video" || activeLesson.type === "live_class") && (
             <div className="w-full flex flex-col items-center justify-center h-full">
-              <div className="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative group">
+              <div 
+                ref={videoContainerRef}
+                className="w-full max-w-5xl aspect-video rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative group"
+              >
                 
                 {/* Download Button Overlay */}
                 {getYoutubeId(activeLesson.content) && (
@@ -383,25 +589,34 @@ const CoursePlayer = () => {
                   </button>
                 )}
 
-                {/* 🛡️ FORCEFIELD & CROP MAGIC (Untouched logic) */}
-                <style>{`
-                  .plyr__video-embed iframe { 
-                    top: -50% !important; 
-                    height: 200% !important; 
-                    pointer-events: none !important; 
-                  }
-                  :root { --plyr-color-main: #ffffff; }
-                  .plyr__control--overlaid { background: rgba(255,255,255,0.1) !important; backdrop-filter: blur(10px); color: white !important; border: 1px solid rgba(255,255,255,0.2); }
-                  .plyr__control--overlaid:hover { background: rgba(255,255,255,0.2) !important; }
-                `}</style>
+                {/* Subtitles & Captions Badge */}
+                {(activeLesson.subtitle_url || (activeLesson.subtitles && activeLesson.subtitles.length > 0) || blobTrackUrl) && (
+                  <div className="absolute top-4 left-4 z-50 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 text-white shadow-lg pointer-events-none">
+                    <Sparkles size={14} className="text-emerald-400 animate-pulse" />
+                    <span className="text-[11px] font-bold tracking-wide flex items-center gap-1.5">
+                      <span>{currentLang === 'ta' ? '🇮🇳 தமிழ் Subtitles' : '🇮🇳 हिन्दी Subtitles'}</span>
+                      <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase">Active</span>
+                    </span>
+                  </div>
+                )}
 
+                {/* 🎯 ULTRA-RESPONSIVE DYNAMIC FLOATING SUBTITLE OVERLAY */}
+                {currentSubtitleText && currentLang !== 'en' && (
+                  <div className="absolute bottom-14 left-0 right-0 z-40 flex justify-center pointer-events-none px-6 select-none transition-all duration-150">
+                    <div className="bg-slate-950/90 backdrop-blur-xl text-white text-sm sm:text-base md:text-xl font-bold px-6 py-2.5 rounded-2xl border border-white/20 shadow-2xl max-w-[85%] text-center tracking-wide leading-relaxed font-sans">
+                      {currentSubtitleText}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. NATIVE VIDEO & STREAM PLAYER */}
                 {getYoutubeId(activeLesson.content) ? (
-                  <Plyr
-                    source={{
-                      type: "video",
-                      sources: [{ src: getYoutubeId(activeLesson.content)!, provider: "youtube" }]
-                    }}
-                    options={plyrOptions}
+                  <iframe
+                    src={`https://www.youtube.com/embed/${getYoutubeId(activeLesson.content)}?autoplay=1&rel=0&modestbranding=1`}
+                    title={activeLesson.title}
+                    className="w-full h-full rounded-[1.5rem] border-0 bg-black"
+                    allowFullScreen
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   />
                 ) : activeLesson.content && (
                   activeLesson.content.startsWith("data:") || 
@@ -409,22 +624,28 @@ const CoursePlayer = () => {
                   activeLesson.content.endsWith(".webm") || 
                   activeLesson.content.endsWith(".ogg")
                 ) ? (
-                  <Plyr
-                    source={{
-                      type: "video",
-                      sources: [{ 
-                        src: activeLesson.content.startsWith("data:") 
-                          ? `${API_BASE_URL}/content/media/${activeLesson.id}` 
-                          : activeLesson.content, 
-                        provider: "html5" 
-                      }]
-                    }}
-                    options={{
-                      controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-                      autoplay: true,
-                      keyboard: { focused: true, global: true }
-                    }}
-                  />
+                  <video
+                    key={`${activeLesson.id}`}
+                    src={activeLesson.content.startsWith("data:") 
+                      ? `${API_BASE_URL}/content/media/${activeLesson.id}` 
+                      : resolveMediaUrl(activeLesson.content)}
+                    controls
+                    autoPlay
+                    playsInline
+                    crossOrigin="anonymous"
+                    className="w-full h-full object-contain bg-black rounded-[1.5rem]"
+                  >
+                    {blobTrackUrl && (
+                      <track
+                        kind="subtitles"
+                        label={currentLang === 'ta' ? 'தமிழ்' : 'हिन्दी'}
+                        srcLang={currentLang}
+                        src={blobTrackUrl}
+                        default
+                      />
+                    )}
+                    Your browser does not support HTML5 video.
+                  </video>
                 ) : activeLesson.content ? (
                   <iframe 
                     src={getEmbedUrl(activeLesson.content)} 
@@ -437,7 +658,9 @@ const CoursePlayer = () => {
                 )}
               </div>
             </div>
+
           )}
+
 
           {activeLesson.type === "code_test" && <div className="w-full h-full"><CodeCompiler lesson={activeLesson} /></div>}
 
@@ -570,6 +793,27 @@ const CoursePlayer = () => {
             <Menu size={20} />
           </button>
         </div>
+
+        {/* MULTILINGUAL LANGUAGE SWITCHER */}
+        {course?.available_languages && course.available_languages.length > 1 && (
+          <div className="absolute top-8 right-8 z-30 flex items-center bg-white/90 backdrop-blur-2xl p-1 rounded-2xl border border-slate-200/80 shadow-md">
+            {course.available_languages.map((l: any) => (
+              <button
+                key={l.code}
+                onClick={() => handleLanguageChange(l.code)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  currentLang === l.code
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <span>{l.code === 'hi' ? '🇮🇳' : '🇬🇧'}</span>
+                <span>{l.nativeName}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex-1 h-full pt-0">{renderContent()}</div>
       </div>
 

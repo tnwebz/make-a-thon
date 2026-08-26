@@ -1,0 +1,106 @@
+# ===================================================
+# SkillForge Language Service (.gitignore)
+# ===================================================
+
+# --- Python & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- ML Models, Weights & Checkpoints ---
+models/*
+!models/.gitkeep
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.engine
+*.tflite
+*.pb
+*.h5
+*.ckpt
+*.model
+.locks/
+CACHEDIR.TAG
+
+# --- Model Hubs & Caches (Hugging Face / PyTorch / Whisper) ---
+.cache/
+hf_cache/
+transformers_cache/
+torch_cache/
+whisper_cache/
+
+# --- Audio, Video & Subtitle Transcoding Artifacts ---
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.mp3
+*.wav
+*.aac
+*.flac
+*.ogg
+*.m4a
+*.srt
+*.vtt
+*.ass
+
+# --- Generated PDF & Output Artifacts ---
+*.pdf
+test_*.pdf
+temp/
+tmp/
+temp_*
+
+# --- Environment & Configuration ---
+.env
+.env.*
+!.env.example
+
+# --- Logs & Testing ---
+*.log
+logs/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- OS & Editor ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~

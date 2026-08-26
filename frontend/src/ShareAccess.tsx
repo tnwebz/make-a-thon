@@ -191,14 +191,16 @@ const ShareAccess: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowInstallModal(true)}
-            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold transition-all cursor-pointer"
-            title="Install Desktop App or open Offline Player to view downloaded ZIPs anytime"
-          >
-            <Laptop size={13} className="text-indigo-600" />
-            <span>Offline App</span>
-          </button>
+          {coursePreview?.accessMode === "ALLOW_DOWNLOAD" && (
+            <button
+              onClick={() => setShowInstallModal(true)}
+              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold transition-all cursor-pointer"
+              title="Install Desktop App or open Offline Player to view downloaded ZIPs anytime"
+            >
+              <Laptop size={13} className="text-indigo-600" />
+              <span>Offline App</span>
+            </button>
+          )}
 
           <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-3 py-1.5 rounded-full shadow-xs text-xs font-bold text-slate-600">
             <Wifi size={14} className="text-emerald-500" />
@@ -275,6 +277,21 @@ const ShareAccess: React.FC = () => {
                   {coursePreview.description}
                 </p>
               )}
+
+              {/* Classroom Session Permission Mode Indicator */}
+              <div className="pt-2">
+                {coursePreview?.accessMode === "VIEW_ONLY" ? (
+                  <div className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-900 border border-amber-200 px-3 py-1 rounded-full text-xs font-bold shadow-2xs">
+                    <Eye size={13} className="text-amber-600 shrink-0" />
+                    <span>View Only Classroom Session (Streaming Mode)</span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-900 border border-indigo-200 px-3 py-1 rounded-full text-xs font-bold shadow-2xs">
+                    <Download size={13} className="text-indigo-600 shrink-0" />
+                    <span>Download Allowed (Full Course & Modules)</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ERROR ALERT */}
@@ -412,6 +429,7 @@ const ShareAccess: React.FC = () => {
       <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
+        shareCode={codeUpper}
       />
     </div>
   );

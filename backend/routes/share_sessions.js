@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { ZipArchive } = require('archiver');
-const { Course, Module, ContentItem, ShareSession, User, Enrollment } = require('../models');
+const { Course, Module, ContentItem, CourseVersion, ContentItemTranslation, ShareSession, User, Enrollment } = require('../models');
 const { authMiddleware } = require('../middleware/auth');
 const { shareAuthMiddleware } = require('../middleware/share_auth');
 
@@ -116,6 +116,22 @@ function getSessionClientMap(shareCode) {
         sessionClients.set(code, new Map());
     }
     return sessionClients.get(code);
+}
+
+function findClient(shareCode, clientId) {
+    if (!clientId) return null;
+    if (shareCode) {
+        const clientMap = getSessionClientMap(shareCode);
+        const client = clientMap ? clientMap.get(clientId) : null;
+        if (client) return client;
+    }
+    // Fallback: search across all active session maps
+    for (const [, clientMap] of sessionClients.entries()) {
+        if (clientMap.has(clientId)) {
+            return clientMap.get(clientId);
+        }
+    }
+    return null;
 }
 
 function detectDevice(userAgent) {
@@ -296,8 +312,9 @@ router.patch('/:shareCode/mode', authMiddleware, async (req, res) => {
             return res.status(400).json({ detail: 'Invalid accessMode. Must be VIEW_ONLY or ALLOW_DOWNLOAD' });
         }
 
+        const shareCode = String(req.params.shareCode).toUpperCase();
         const session = await ShareSession.findOne({
-            where: { shareCode: req.params.shareCode, createdById: req.user.id }
+            where: { shareCode }
         });
         if (!session) {
             return res.status(404).json({ detail: 'Share session not found' });
@@ -306,7 +323,7 @@ router.patch('/:shareCode/mode', authMiddleware, async (req, res) => {
         session.accessMode = accessMode;
         await session.save();
 
-        console.log(`🔄 Share session mode updated: ${req.params.shareCode} -> ${accessMode}`);
+        console.log(`🔄 Share session mode updated: ${shareCode} -> ${accessMode}`);
         res.json({ message: 'Access mode updated', accessMode: session.accessMode });
     } catch (error) {
         console.error('Update share session mode error:', error);
@@ -543,7 +560,16 @@ router.post('/:shareCode/heartbeat', async (req, res) => {
             }
         }
 
-        res.json({ ok: true });
+        const session = await ShareSession.findOne({
+            where: { shareCode },
+            attributes: ['accessMode', 'status']
+        });
+
+        res.json({
+            ok: true,
+            accessMode: session?.accessMode || 'VIEW_ONLY',
+            sessionStatus: session?.status || 'ACTIVE'
+        });
     } catch (error) {
         console.error('Heartbeat error:', error);
         res.status(500).json({ detail: 'Heartbeat failed' });
@@ -613,12 +639,13 @@ router.post('/:shareCode/download-progress', async (req, res) => {
             } catch (e) {}
         }
 
-        if (clientId && clientMap.has(clientId)) {
-            const client = clientMap.get(clientId);
+        let client = typeof findClient === 'function' ? findClient(shareCode, clientId) : (clientMap ? clientMap.get(clientId) : null);
+
+        if (client) {
             const { bytesTransferred, totalBytes, percent, status, speed, fileName } = req.body;
 
             client.downloadProgress = {
-                fileName: fileName || client.downloadProgress?.fileName || 'Course.zip',
+                fileName: fileName || client.downloadProgress?.fileName || 'SkillForge-Offline.apk',
                 bytesTransferred: Number(bytesTransferred) || 0,
                 totalBytes: Number(totalBytes) || 0,
                 percent: Math.min(100, Math.max(0, Number(percent) || 0)),
@@ -638,10 +665,11 @@ router.post('/:shareCode/download-progress', async (req, res) => {
 
 /**
  * GET /api/v1/share-sessions/:shareCode/course
- * Get full course data for a share session (requires share token)
+ * Get full course data for a share session (requires share token, supports ?lang=en|hi)
  */
 router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
     try {
+        const requestedLang = req.query.lang || 'en';
         const course = await Course.findOne({
             where: { id: req.share.courseId },
             include: [
@@ -656,13 +684,49 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
             return res.status(404).json({ detail: 'Course not found' });
         }
 
+        // Check available languages
+        const versions = await CourseVersion.findAll({
+            where: { course_id: course.id, status: 'READY' }
+        });
+        const readyLangMap = {};
+        versions.forEach(v => { readyLangMap[v.language_code] = v; });
+
+        const availableLanguages = [
+            { code: 'en', name: 'English', nativeName: 'English', ready: true }
+        ];
+        if (readyLangMap['hi']) {
+            availableLanguages.push({ code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', ready: true });
+        }
+        if (readyLangMap['ta']) {
+            availableLanguages.push({ code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', ready: true });
+        }
+
+        const isRequestedReady = requestedLang !== 'en' && readyLangMap[requestedLang];
+        let translationMap = {};
+        let activeTitle = course.title;
+        let activeDescription = course.description;
+
+        if (isRequestedReady) {
+            const currentVer = readyLangMap[requestedLang];
+            if (currentVer.title) activeTitle = currentVer.title;
+            if (currentVer.description) activeDescription = currentVer.description;
+
+            const translations = await ContentItemTranslation.findAll({
+                where: { language_code: requestedLang, status: 'READY' }
+            });
+            translations.forEach(t => translationMap[t.content_item_id] = t);
+        }
+
         const responseData = {
             id: course.id,
-            title: course.title,
-            description: course.description,
+            title: activeTitle,
+            original_title: course.title,
+            description: activeDescription,
             image_url: course.image_url,
             accessMode: req.share.accessMode,
             shareCode: req.share.shareCode,
+            current_language: isRequestedReady ? requestedLang : 'en',
+            available_languages: availableLanguages,
             modules: course.Modules ? course.Modules
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map(m => ({
@@ -672,22 +736,32 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
                     lessons: m.items ? m.items
                         .sort((a, b) => (a.order || 0) - (b.order || 0))
                         .map(i => {
-                            const isDiskFile = typeof i.content === 'string' && (i.content.startsWith('/uploads/') || i.content.startsWith('uploads/'));
-                            const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
-                            const isYouTube = typeof i.content === 'string' && (
-                                i.content.includes('youtube.com') || i.content.includes('youtu.be')
+                            let itemContent = i.content;
+                            let lessonTitle = i.title;
+                            let isTranslated = false;
+
+                            if (isRequestedReady && translationMap[i.id]) {
+                                itemContent = translationMap[i.id].content;
+                                if (translationMap[i.id].title) lessonTitle = translationMap[i.id].title;
+                                isTranslated = true;
+                            }
+
+                            const isDiskFile = typeof itemContent === 'string' && (itemContent.startsWith('/uploads/') || itemContent.startsWith('uploads/'));
+                            const isBase64 = typeof itemContent === 'string' && itemContent.startsWith('data:');
+                            const isYouTube = typeof itemContent === 'string' && (
+                                itemContent.includes('youtube.com') || itemContent.includes('youtu.be')
                             );
-                            const isPdf = typeof i.content === 'string' && (
-                                i.content.startsWith('data:application/pdf') || 
-                                i.content.toLowerCase().endsWith('.pdf') ||
+                            const isPdf = typeof itemContent === 'string' && (
+                                itemContent.startsWith('data:application/pdf') || 
+                                itemContent.toLowerCase().endsWith('.pdf') ||
                                 (i.type === 'note' && (isBase64 || isDiskFile))
                             );
                             let detectedMime = null;
                             if (isBase64) {
-                                const m = i.content.match(/data:([^;]+)/);
+                                const m = itemContent.match(/data:([^;]+)/);
                                 detectedMime = m ? m[1] : null;
                             } else if (isDiskFile) {
-                                const ext = path.extname(i.content).toLowerCase();
+                                const ext = path.extname(itemContent).toLowerCase();
                                 if (ext === '.mp4') detectedMime = 'video/mp4';
                                 else if (ext === '.webm') detectedMime = 'video/webm';
                                 else if (ext === '.pdf') detectedMime = 'application/pdf';
@@ -695,21 +769,21 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
 
                             return {
                                 id: i.id,
-                                title: i.title,
+                                title: lessonTitle,
                                 type: i.type,
-                                // For base64 or disk content, provide the local share stream endpoint
                                 contentUrl: (isBase64 || isDiskFile)
-                                    ? `/share-sessions/${req.share.shareCode}/course/content/${i.id}`
+                                    ? `/share-sessions/${req.share.shareCode}/course/content/${i.id}${requestedLang === 'hi' && isHindiReady ? '?lang=hi' : ''}`
                                     : null,
-                                youtubeUrl: isYouTube ? i.content : null,
-                                rawUrl: (!isBase64 && !isDiskFile && !isYouTube && typeof i.content === 'string' && i.content.startsWith('http')) ? i.content : null,
-                                textContent: (!isBase64 && !isDiskFile && !isYouTube && (typeof i.content !== 'string' || !i.content.startsWith('http'))) ? i.content : null,
+                                youtubeUrl: isYouTube ? itemContent : null,
+                                rawUrl: (!isBase64 && !isDiskFile && !isYouTube && typeof itemContent === 'string' && itemContent.startsWith('http')) ? itemContent : null,
+                                textContent: (!isBase64 && !isDiskFile && !isYouTube && (typeof itemContent !== 'string' || !itemContent.startsWith('http'))) ? itemContent : null,
                                 isPdf: isPdf,
                                 mimeType: detectedMime,
                                 duration: i.duration,
                                 is_mandatory: i.is_mandatory,
                                 order: i.order,
-                                instructions: i.instructions
+                                instructions: i.instructions,
+                                is_translated: isTranslated
                             };
                         }) : []
                 })) : []
@@ -724,10 +798,11 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
 
 /**
  * GET /api/v1/share-sessions/:shareCode/course/content/:contentId
- * Stream a single content item (requires share token)
+ * Stream a single content item (requires share token, supports ?lang=en|hi)
  */
 router.get('/:shareCode/course/content/:contentId', shareAuthMiddleware, async (req, res) => {
     try {
+        const requestedLang = req.query.lang || 'en';
         const item = await ContentItem.findByPk(req.params.contentId);
         if (!item || !item.content) {
             return res.status(404).json({ detail: 'Content not found' });
@@ -739,9 +814,21 @@ router.get('/:shareCode/course/content/:contentId', shareAuthMiddleware, async (
             return res.status(403).json({ detail: 'Content does not belong to this shared course' });
         }
 
+        let contentToServe = item.content;
+
+        // Check if translated version should be streamed (hi, ta)
+        if (requestedLang !== 'en') {
+            const trans = await ContentItemTranslation.findOne({
+                where: { content_item_id: item.id, language_code: requestedLang, status: 'READY' }
+            });
+            if (trans && trans.content) {
+                contentToServe = trans.content;
+            }
+        }
+
         // Case 1: Disk file stored on server
-        if (item.content.startsWith('/uploads/') || item.content.startsWith('uploads/')) {
-            const relPath = item.content.startsWith('/') ? item.content.substring(1) : item.content;
+        if (contentToServe.startsWith('/uploads/') || contentToServe.startsWith('uploads/')) {
+            const relPath = contentToServe.startsWith('/') ? contentToServe.substring(1) : contentToServe;
             const fullPath = path.join(__dirname, '..', relPath);
 
             if (!fs.existsSync(fullPath)) {
@@ -788,15 +875,14 @@ router.get('/:shareCode/course/content/:contentId', shareAuthMiddleware, async (
         }
 
         // Case 2: Base64 data URI
-        if (item.content.startsWith('data:')) {
-            const parts = item.content.split(',');
+        if (contentToServe.startsWith('data:')) {
+            const parts = contentToServe.split(',');
             const match = parts[0].match(/:(.*?);/);
             const mimeType = match ? match[1] : 'application/octet-stream';
             const base64Data = parts[1];
             const buffer = Buffer.from(base64Data, 'base64');
             const totalLength = buffer.length;
 
-            // Support range requests for video seeking & PDF page streaming
             const range = req.headers.range;
             if (range) {
                 const rangeParts = range.replace(/bytes=/, "").split("-");
@@ -820,8 +906,7 @@ router.get('/:shareCode/course/content/:contentId', shareAuthMiddleware, async (
                 }).send(buffer);
             }
         } else {
-            // For text/URL content, send as text
-            res.status(200).set({ 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'inline' }).send(item.content);
+            res.status(200).set({ 'Content-Type': 'text/plain; charset=utf-8', 'Content-Disposition': 'inline' }).send(contentToServe);
         }
     } catch (error) {
         console.error('Share content stream error:', error);
@@ -831,7 +916,7 @@ router.get('/:shareCode/course/content/:contentId', shareAuthMiddleware, async (
 
 /**
  * GET /api/v1/share-sessions/:shareCode/download/course
- * Download entire course as ZIP (only if ALLOW_DOWNLOAD)
+ * Download entire course as ZIP (supports ?lang=en|hi|ta, only if ALLOW_DOWNLOAD)
  */
 router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) => {
     try {
@@ -839,6 +924,7 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
             return res.status(403).json({ detail: 'Downloads are not permitted for this share session' });
         }
 
+        const requestedLang = req.query.lang || 'en';
         const course = await Course.findOne({
             where: { id: req.share.courseId },
             include: [{
@@ -851,7 +937,32 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
             return res.status(404).json({ detail: 'Course not found' });
         }
 
-        const courseName = sanitizeFilename(course.title);
+        const versions = await CourseVersion.findAll({
+            where: { course_id: course.id, status: 'READY' }
+        });
+        const readyLangMap = {};
+        versions.forEach(v => { readyLangMap[v.language_code] = v; });
+
+        const isRequestedReady = requestedLang !== 'en' && readyLangMap[requestedLang];
+        let translationMap = {};
+        let activeTitle = course.title;
+        let activeDescription = course.description;
+
+        if (isRequestedReady) {
+            const currentVer = readyLangMap[requestedLang];
+            if (currentVer.title) activeTitle = currentVer.title;
+            if (currentVer.description) activeDescription = currentVer.description;
+
+            const translations = await ContentItemTranslation.findAll({
+                where: { language_code: requestedLang, status: 'READY' }
+            });
+            translations.forEach(t => translationMap[t.content_item_id] = t);
+        }
+
+        const langSuffix = isRequestedReady 
+            ? (requestedLang === 'hi' ? ' (Hindi)' : (requestedLang === 'ta' ? ' (Tamil)' : ` (${requestedLang})`)) 
+            : '';
+        const courseName = sanitizeFilename(course.title + langSuffix);
 
         res.set({
             'Content-Type': 'application/zip',
@@ -880,21 +991,26 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
         let estimatedTotalBytes = 1024 * 50; // manifest overhead
         for (const mod of modules) {
             for (const item of mod.items || []) {
-                if (item.content && (item.content.startsWith('/uploads/') || item.content.startsWith('uploads/'))) {
-                    const relPath = item.content.startsWith('/') ? item.content.substring(1) : item.content;
+                let contentVal = item.content;
+                if (isRequestedReady && translationMap[item.id]) {
+                    contentVal = translationMap[item.id].content;
+                }
+
+                if (contentVal && (contentVal.startsWith('/uploads/') || contentVal.startsWith('uploads/'))) {
+                    const relPath = contentVal.startsWith('/') ? contentVal.substring(1) : contentVal;
                     const fullPath = path.join(__dirname, '..', relPath);
                     if (fs.existsSync(fullPath)) {
                         try {
                             estimatedTotalBytes += fs.statSync(fullPath).size;
                         } catch (e) {}
                     }
-                } else if (item.content && item.content.startsWith('data:')) {
-                    const parts = item.content.split(',');
+                } else if (contentVal && contentVal.startsWith('data:')) {
+                    const parts = contentVal.split(',');
                     if (parts[1]) {
                         estimatedTotalBytes += Math.floor((parts[1].length * 3) / 4);
                     }
-                } else if (item.content) {
-                    estimatedTotalBytes += Buffer.byteLength(item.content, 'utf8');
+                } else if (contentVal) {
+                    estimatedTotalBytes += Buffer.byteLength(contentVal, 'utf8');
                 }
             }
         }
@@ -963,8 +1079,11 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
         });
 
         const manifest = {
-            title: course.title,
-            description: course.description,
+            title: activeTitle,
+            original_title: course.title,
+            language: isRequestedReady ? requestedLang : 'en',
+            sourceLanguage: 'en',
+            description: activeDescription,
             exportedAt: new Date().toISOString(),
             version: "1.0",
             modules: []
@@ -987,13 +1106,22 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
             for (let li = 0; li < lessons.length; li++) {
                 const lesson = lessons[li];
                 const lessonPrefix = String(li + 1).padStart(2, '0');
-                const lessonName = sanitizeFilename(lesson.title);
+                
+                let contentVal = lesson.content;
+                let lessonTitle = lesson.title;
+
+                if (requestedLang === 'hi' && isHindiReady && translationMap[lesson.id]) {
+                    contentVal = translationMap[lesson.id].content;
+                    if (translationMap[lesson.id].title) lessonTitle = translationMap[lesson.id].title;
+                }
+
+                const lessonName = sanitizeFilename(lessonTitle);
                 let lessonFilePath = null;
                 let ext = '';
 
-                if (lesson.content && (lesson.content.startsWith('/uploads/') || lesson.content.startsWith('uploads/'))) {
+                if (contentVal && (contentVal.startsWith('/uploads/') || contentVal.startsWith('uploads/'))) {
                     // Disk file -> stream from disk directly into ZIP
-                    const relPath = lesson.content.startsWith('/') ? lesson.content.substring(1) : lesson.content;
+                    const relPath = contentVal.startsWith('/') ? contentVal.substring(1) : contentVal;
                     const fullPath = path.join(__dirname, '..', relPath);
                     if (fs.existsSync(fullPath)) {
                         ext = path.extname(fullPath);
@@ -1002,22 +1130,22 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
                             name: `${courseName}/${lessonFilePath}`
                         });
                     }
-                } else if (lesson.content && lesson.content.startsWith('data:')) {
+                } else if (contentVal && contentVal.startsWith('data:')) {
                     // Base64 content → decode to binary
-                    ext = getExtFromDataUrl(lesson.content);
-                    const parts = lesson.content.split(',');
+                    ext = getExtFromDataUrl(contentVal);
+                    const parts = contentVal.split(',');
                     const base64Data = parts[1];
                     const buffer = Buffer.from(base64Data, 'base64');
                     lessonFilePath = `${moduleFolderName}/${lessonPrefix} - ${lessonName}${ext}`;
                     archive.append(buffer, {
                         name: `${courseName}/${lessonFilePath}`
                     });
-                } else if (lesson.content) {
+                } else if (contentVal) {
                     // Text/URL content → save as .txt
-                    const isYouTube = lesson.content.includes('youtube.com') || lesson.content.includes('youtu.be');
+                    const isYouTube = contentVal.includes('youtube.com') || contentVal.includes('youtu.be');
                     const content = isYouTube
-                        ? `YouTube Video: ${lesson.content}\n\nNote: This video requires an internet connection to view.`
-                        : lesson.content;
+                        ? `YouTube Video: ${contentVal}\n\nNote: This video requires an internet connection to view.`
+                        : contentVal;
                     lessonFilePath = `${moduleFolderName}/${lessonPrefix} - ${lessonName}.txt`;
                     archive.append(content, {
                         name: `${courseName}/${lessonFilePath}`
@@ -1026,14 +1154,15 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
 
                 manifestModule.lessons.push({
                     id: lesson.id,
-                    title: lesson.title,
+                    title: lessonTitle,
                     type: lesson.type,
                     duration: lesson.duration,
                     is_mandatory: lesson.is_mandatory,
                     order: lesson.order || li + 1,
                     instructions: lesson.instructions,
                     filePath: lessonFilePath,
-                    textContent: (!lessonFilePath || lessonFilePath.endsWith('.txt')) ? lesson.content : null
+                    textContent: (!lessonFilePath || lessonFilePath.endsWith('.txt')) ? contentVal : null,
+                    is_translated: requestedLang === 'hi' && isHindiReady && !!translationMap[lesson.id]
                 });
             }
 
@@ -1150,3 +1279,6 @@ router.get('/:shareCode/download/module/:moduleId', shareAuthMiddleware, async (
 });
 
 module.exports = router;
+module.exports.getSessionClientMap = getSessionClientMap;
+module.exports.findClient = findClient;
+module.exports.sessionClients = sessionClients;

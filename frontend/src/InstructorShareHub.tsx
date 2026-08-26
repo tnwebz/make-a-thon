@@ -208,8 +208,35 @@ const InstructorShareHub: React.FC = () => {
     return <Globe size={14} className="text-slate-600" />;
   };
 
-  const copyToClipboard = (text: string, type: "link" | "passkey") => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string, type: "link" | "passkey") => {
+    let copied = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch (err) {
+        copied = false;
+      }
+    }
+
+    if (!copied) {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        textArea.setAttribute("readonly", "");
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        copied = document.execCommand("copy");
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.error("Fallback copy failed:", err);
+      }
+    }
+
     if (type === "link") {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
@@ -578,60 +605,85 @@ const InstructorShareHub: React.FC = () => {
                         </div>
 
                         {/* LIVE DATA TRANSFER PROGRESS BAR */}
-                        {client.downloadProgress && (
-                          <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 space-y-2 shadow-2xs">
-                            <div className="flex justify-between items-center text-xs font-bold">
-                              <div className="flex items-center gap-1.5 text-slate-800 truncate pr-2">
-                                <Download size={13} className={isDownloading ? "text-indigo-600 animate-bounce" : isCompleted ? "text-emerald-600" : "text-slate-400"} />
-                                <span className="truncate">{client.downloadProgress.fileName}</span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0 text-[11px] font-mono">
-                                <span className="text-slate-500">
-                                  {formatBytes(client.downloadProgress.bytesTransferred)} / {formatBytes(client.downloadProgress.totalBytes)}
-                                </span>
-                                {client.downloadProgress.speed && (
-                                  <span className="text-indigo-700 font-black bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px]">
-                                    {client.downloadProgress.speed}
+                        {client.downloadProgress && (() => {
+                          const isApk = client.downloadProgress.fileName.toLowerCase().endsWith(".apk");
+                          const isExe = client.downloadProgress.fileName.toLowerCase().endsWith(".exe");
+                          const isApp = isApk || isExe;
+
+                          return (
+                            <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                              <div className="flex justify-between items-center text-xs font-bold">
+                                <div className="flex items-center gap-2 text-slate-800 truncate pr-2">
+                                  {isApk ? (
+                                    <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                                      <Smartphone size={11} />
+                                      Android APK
+                                    </span>
+                                  ) : isExe ? (
+                                    <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                                      <Laptop size={11} />
+                                      Windows App
+                                    </span>
+                                  ) : (
+                                    <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+                                      <Download size={11} />
+                                      Course ZIP
+                                    </span>
+                                  )}
+                                  <span className="truncate font-mono">{client.downloadProgress.fileName}</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 text-[11px] font-mono">
+                                  <span className="text-slate-500">
+                                    {formatBytes(client.downloadProgress.bytesTransferred)} / {formatBytes(client.downloadProgress.totalBytes)}
                                   </span>
-                                )}
-                                <span className={`font-black text-xs ${isCompleted ? "text-emerald-600" : "text-indigo-700"}`}>
-                                  {percent}%
+                                  {client.downloadProgress.speed && (
+                                    <span className="text-indigo-700 font-black bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px]">
+                                      {client.downloadProgress.speed}
+                                    </span>
+                                  )}
+                                  <span className={`font-black text-xs ${isCompleted ? "text-emerald-600" : "text-indigo-700"}`}>
+                                    {percent}%
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Visual Progress Bar Track */}
+                              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 relative">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${percent}%` }}
+                                  transition={{ duration: 0.3, ease: "easeOut" }}
+                                  className={`h-full rounded-full transition-all ${
+                                    isCompleted
+                                      ? "bg-emerald-500"
+                                      : isFailed
+                                      ? "bg-red-500"
+                                      : "bg-gradient-to-r from-indigo-500 via-blue-500 to-emerald-400"
+                                  }`}
+                                />
+                              </div>
+
+                              <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium">
+                                <span>
+                                  {isDownloading
+                                    ? isApp
+                                      ? "Transferring native player app directly over router Wi-Fi..."
+                                      : "Transferring course package directly over router Wi-Fi..."
+                                    : isCompleted
+                                    ? isApp
+                                      ? "✅ Native Player App downloaded and saved on student device"
+                                      : "✅ Verified: All files unpacked and saved on student device"
+                                    : isFailed
+                                    ? "⚠️ Transfer was interrupted or cancelled"
+                                    : "Transfer status updated"}
                                 </span>
+                                {client.downloadProgress.updatedAt && (
+                                  <span>{new Date(client.downloadProgress.updatedAt).toLocaleTimeString()}</span>
+                                )}
                               </div>
                             </div>
-
-                            {/* Visual Progress Bar Track */}
-                            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80 relative">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${percent}%` }}
-                                transition={{ duration: 0.3, ease: "easeOut" }}
-                                className={`h-full rounded-full transition-all ${
-                                  isCompleted
-                                    ? "bg-emerald-500"
-                                    : isFailed
-                                    ? "bg-red-500"
-                                    : "bg-gradient-to-r from-indigo-500 via-blue-500 to-emerald-400"
-                                }`}
-                              />
-                            </div>
-
-                            <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium">
-                              <span>
-                                {isDownloading
-                                  ? "Transferring course package directly over router Wi-Fi..."
-                                  : isCompleted
-                                  ? "✅ Verified: All files unpacked and saved on student device"
-                                  : isFailed
-                                  ? "⚠️ Transfer was interrupted or cancelled"
-                                  : "Transfer status updated"}
-                              </span>
-                              {client.downloadProgress.updatedAt && (
-                                <span>{new Date(client.downloadProgress.updatedAt).toLocaleTimeString()}</span>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     );
                   })}

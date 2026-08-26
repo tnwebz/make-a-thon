@@ -37,6 +37,7 @@ interface OfflineCourse {
   title: string;
   description?: string;
   importedAt: string;
+  language?: string;
   modules: OfflineModule[];
 }
 
@@ -317,6 +318,7 @@ const OfflineCoursePlayer: React.FC = () => {
           title: manifest.title || file.name.replace(/\.zip$/i, ""),
           description: manifest.description || "Offline course package",
           importedAt: new Date().toISOString(),
+          language: manifest.language || (file.name.toLowerCase().includes("hindi") ? "hi" : "en"),
           modules
         };
       } else {
@@ -552,6 +554,7 @@ const OfflineCoursePlayer: React.FC = () => {
                     controls
                     autoPlay
                     playsInline
+                    controlsList="nodownload"
                     className="w-full h-full object-contain bg-black"
                     src={activeLesson.blobUrl}
                   >
@@ -585,8 +588,18 @@ const OfflineCoursePlayer: React.FC = () => {
         {/* BOTTOM ACTION DOCK */}
         <div className="py-3 sm:py-4 md:py-6 bg-white/95 backdrop-blur-2xl border-t border-slate-200/70 flex items-center justify-between px-3 sm:px-6 md:px-12 shrink-0 z-20 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] gap-2">
           <div className="min-w-0 flex-1 pr-2">
-            <h3 className="text-slate-900 font-black text-sm sm:text-lg md:text-2xl tracking-tight truncate">
-              {activeLesson.title}
+            <h3 className="text-sm sm:text-base md:text-lg font-black text-slate-900 tracking-tight truncate flex items-center gap-2">
+              <span>{activeLesson.title}</span>
+              {(activeCourse?.language === "hi" || activeLesson.title.toLowerCase().includes("hindi")) && (
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                  <Sparkles size={10} className="text-emerald-500" /> हिन्दी
+                </span>
+              )}
+              {(activeCourse?.language === "ta" || activeLesson.title.toLowerCase().includes("tamil")) && (
+                <span className="bg-cyan-50 text-cyan-700 border border-cyan-200 text-[10px] font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                  <Sparkles size={10} className="text-cyan-500" /> தமிழ்
+                </span>
+              )}
             </h3>
             <p className="text-slate-400 text-[10px] sm:text-[11px] font-black uppercase tracking-widest truncate">
               {activeLesson.type} • Offline Mode

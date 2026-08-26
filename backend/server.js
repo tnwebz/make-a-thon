@@ -38,7 +38,17 @@ const path = require('path');
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res, filePath) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', '*');
+        if (filePath.endsWith('.vtt')) {
+            res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+        }
+    }
+}));
+
 
 // Routes
 app.use('/api/v1', require('./routes/auth'));

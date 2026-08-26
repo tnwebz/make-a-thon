@@ -142,6 +142,41 @@ const ShareSession = sequelize.define('ShareSession', {
     expiresAt: { type: DataTypes.DATE, allowNull: true },
 }, { timestamps: true, tableName: 'share_sessions' });
 
+const CourseVersion = sequelize.define('CourseVersion', {
+    course_id: { type: DataTypes.INTEGER, allowNull: false },
+    language_code: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'hi' },
+    title: { type: DataTypes.STRING, allowNull: true },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'NOT_GENERATED' }, // NOT_GENERATED | GENERATING | READY | FAILED | OUTDATED
+    progress: { type: DataTypes.INTEGER, defaultValue: 0 },
+    total_files: { type: DataTypes.INTEGER, defaultValue: 0 },
+    completed_files: { type: DataTypes.INTEGER, defaultValue: 0 },
+    current_file: { type: DataTypes.STRING, allowNull: true },
+    error_message: { type: DataTypes.TEXT, allowNull: true },
+}, { timestamps: true, tableName: 'course_versions' });
+
+const ContentItemTranslation = sequelize.define('ContentItemTranslation', {
+    content_item_id: { type: DataTypes.INTEGER, allowNull: false },
+    language_code: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'hi' },
+    title: { type: DataTypes.STRING, allowNull: true },
+    content: { type: DataTypes.TEXT, allowNull: true }, // URL or /uploads/media/hi/ path to translated PDF
+    status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'READY' }, // READY | FAILED | GENERATING | OUTDATED
+    source_checksum: { type: DataTypes.STRING, allowNull: true },
+    error_message: { type: DataTypes.TEXT, allowNull: true },
+    instructions: { type: DataTypes.TEXT, allowNull: true },
+}, { timestamps: true, tableName: 'content_item_translations' });
+
+const VideoSubtitle = sequelize.define('VideoSubtitle', {
+    content_item_id: { type: DataTypes.INTEGER, allowNull: false },
+    language_code: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'hi' },
+    vtt_path: { type: DataTypes.TEXT, allowNull: true },        // /uploads/media/subtitles/hi/xxx.vtt
+    transcript_path: { type: DataTypes.TEXT, allowNull: true },  // /uploads/media/subtitles/hi/xxx.json
+    status: { type: DataTypes.STRING, defaultValue: 'READY' },   // READY | FAILED | GENERATING
+    segment_count: { type: DataTypes.INTEGER, defaultValue: 0 },
+    duration_seconds: { type: DataTypes.FLOAT, allowNull: true },
+    error_message: { type: DataTypes.TEXT, allowNull: true },
+}, { timestamps: true, tableName: 'video_subtitles' });
+
 // Setup Relationships
 SchoolClass.hasMany(User, { foreignKey: 'school_class_id', as: 'students' });
 User.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
@@ -154,6 +189,15 @@ Module.belongsTo(Course, { foreignKey: 'course_id' });
 
 Module.hasMany(ContentItem, { foreignKey: 'module_id', as: 'items' });
 ContentItem.belongsTo(Module, { foreignKey: 'module_id' });
+
+Course.hasMany(CourseVersion, { foreignKey: 'course_id', as: 'versions' });
+CourseVersion.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
+
+ContentItem.hasMany(ContentItemTranslation, { foreignKey: 'content_item_id', as: 'translations' });
+ContentItemTranslation.belongsTo(ContentItem, { foreignKey: 'content_item_id', as: 'contentItem' });
+
+ContentItem.hasMany(VideoSubtitle, { foreignKey: 'content_item_id', as: 'subtitles' });
+VideoSubtitle.belongsTo(ContentItem, { foreignKey: 'content_item_id', as: 'contentItem' });
 
 User.hasMany(Enrollment, { foreignKey: 'user_id', as: 'enrollments' });
 Enrollment.belongsTo(User, { foreignKey: 'user_id', as: 'student' });
@@ -191,7 +235,6 @@ LessonProgress.belongsTo(User, { foreignKey: 'user_id' });
 ContentItem.hasMany(LessonProgress, { foreignKey: 'content_item_id' });
 LessonProgress.belongsTo(ContentItem, { foreignKey: 'content_item_id' });
 
-User.hasMany(ScheduledClass, { foreignKey: 'instructor_id' });
 ScheduledClass.belongsTo(User, { foreignKey: 'instructor_id', as: 'instructor' });
 Course.hasMany(ScheduledClass, { foreignKey: 'course_id' });
 ScheduledClass.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
@@ -215,6 +258,9 @@ module.exports = {
     CourseBatch,
     Module,
     ContentItem,
+    CourseVersion,
+    ContentItemTranslation,
+    VideoSubtitle,
     Enrollment,
     Submission,
     CodeTest,
@@ -225,3 +271,4 @@ module.exports = {
     CourseReview,
     ShareSession
 };
+

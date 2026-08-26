@@ -109,6 +109,9 @@ router.get('/media/:id', async (req, res) => {
             else if (ext === '.pdf') contentType = 'application/pdf';
             else if (ext === '.png') contentType = 'image/png';
             else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+            else if (ext === '.vtt') contentType = 'text/vtt; charset=utf-8';
+            else if (ext === '.json') contentType = 'application/json; charset=utf-8';
+
 
             if (range) {
                 const parts = range.replace(/bytes=/, "").split("-");
@@ -249,10 +252,14 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 
 router.delete('/:id', authMiddleware, async (req, res) => {
     try {
-        const item = await ContentItem.findByPk(req.params.id);
+        const item = await ContentItem.findByPk(req.params.id, {
+            include: [{ model: Module }]
+        });
         if (!item) return res.status(404).json({ detail: "Not found" });
         
-        // If it's a disk file, clean it up from disk
+        const courseId = item.Module ? item.Module.course_id : null;
+
+        // 1. If it's a disk file, clean it up from disk
         if (item.content && (item.content.startsWith('/uploads/') || item.content.startsWith('uploads/'))) {
             const relPath = item.content.startsWith('/') ? item.content.substring(1) : item.content;
             const fullPath = path.join(__dirname, '..', relPath);
@@ -261,12 +268,80 @@ router.delete('/:id', authMiddleware, async (req, res) => {
             }
         }
 
+        // 2. Clean up associated translations and their disk files
+        try {
+            const translations = await ContentItemTranslation.findAll({ where: { content_item_id: item.id } });
+            for (const t of translations) {
+                if (t.content && (t.content.startsWith('/uploads/') || t.content.startsWith('uploads/'))) {
+                    const tRel = t.content.startsWith('/') ? t.content.substring(1) : t.content;
+                    const tFull = path.join(__dirname, '..', tRel);
+                    if (fs.existsSync(tFull)) {
+                        try { fs.unlinkSync(tFull); } catch (e) {}
+                    }
+                }
+            }
+            await ContentItemTranslation.destroy({ where: { content_item_id: item.id } });
+        } catch (e) {
+            console.warn("Could not clean translations for item:", e);
+        }
+
+        // 3. Clean up associated video subtitles and their disk files
+        try {
+            const subs = await VideoSubtitle.findAll({ where: { content_item_id: item.id } });
+            for (const s of subs) {
+                if (s.vtt_path) {
+                    const sRel = s.vtt_path.startsWith('/') ? s.vtt_path.substring(1) : s.vtt_path;
+                    const sFull = path.join(__dirname, '..', sRel);
+                    if (fs.existsSync(sFull)) {
+                        try { fs.unlinkSync(sFull); } catch (e) {}
+                    }
+                }
+                if (s.transcript_path) {
+                    const tRel = s.transcript_path.startsWith('/') ? s.transcript_path.substring(1) : s.transcript_path;
+                    const tFull = path.join(__dirname, '..', tRel);
+                    if (fs.existsSync(tFull)) {
+                        try { fs.unlinkSync(tFull); } catch (e) {}
+                    }
+                }
+            }
+            await VideoSubtitle.destroy({ where: { content_item_id: item.id } });
+        } catch (e) {
+            console.warn("Could not clean subtitles for item:", e);
+        }
+
+        // 4. Delete the item
         await item.destroy();
+
+        // 5. If parent course exists, auto-sync CourseVersion records
+        if (courseId) {
+            try {
+                const remainingNotes = await ContentItem.count({
+                    include: [{ model: Module, where: { course_id: courseId } }],
+                    where: { type: 'note' }
+                });
+
+                const versions = await CourseVersion.findAll({ where: { course_id: courseId } });
+                for (const v of versions) {
+                    v.total_files = remainingNotes;
+                    if (remainingNotes === 0) {
+                        v.completed_files = 0;
+                        v.current_file = null;
+                        v.status = 'READY';
+                        v.progress = 100;
+                    }
+                    await v.save();
+                }
+            } catch (e) {
+                console.warn("Could not sync CourseVersion after item deletion:", e);
+            }
+        }
+
         res.json({ message: "Deleted" });
     } catch (error) {
-        console.error(error);
+        console.error("Item delete error:", error);
         res.status(500).json({ detail: "Internal Server Error" });
     }
 });
+
 
 module.exports = router;

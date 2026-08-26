@@ -82,14 +82,14 @@ define(['./workbox-0f7611cd'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "/index.html",
-    "revision": "0.l3ur2v87l3o"
+    "revision": "0.nl0atiftrn8"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
     allowlist: [/^\/$/]
   }));
-  workbox.registerRoute(/^http:\/\/192\.168\.1\.6:8000\/api\/v1\/(login|users|user\/change-password|user\/zoom-credentials|admin-login|execute)/i, new workbox.NetworkOnly(), 'GET');
-  workbox.registerRoute(/^http:\/\/192\.168\.1\.6:8000\/api\/v1\/(courses|my-courses|progress|meetings|code-tests|assignments|admin|instructor)/i, new workbox.NetworkFirst({
+  workbox.registerRoute(/^http:\/\/192\.168\.1\.2:8000\/api\/v1\/(login|users|user\/change-password|user\/zoom-credentials|admin-login|execute)/i, new workbox.NetworkOnly(), 'GET');
+  workbox.registerRoute(/^http:\/\/192\.168\.1\.2:8000\/api\/v1\/(courses|my-courses|progress|meetings|code-tests|assignments|admin|instructor)/i, new workbox.NetworkFirst({
     "cacheName": "dynamic-api-cache",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 100,
@@ -98,7 +98,7 @@ define(['./workbox-0f7611cd'], (function (workbox) { 'use strict';
       statuses: [0, 200]
     })]
   }), 'GET');
-  workbox.registerRoute(/^http:\/\/192\.168\.1\.6:8000\/api\/v1\/(generate-pdf|uploads|static)\/.*/i, new workbox.StaleWhileRevalidate({
+  workbox.registerRoute(/^http:\/\/192\.168\.1\.2:8000\/api\/v1\/(generate-pdf|uploads|static)\/.*/i, new workbox.StaleWhileRevalidate({
     "cacheName": "static-resource-cache",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 50,

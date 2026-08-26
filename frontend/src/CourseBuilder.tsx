@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL } from "./config";
 import axios from "axios";
@@ -8,8 +8,9 @@ import {
   ArrowLeft, Video, HelpCircle, FileText, Star,
   Trash2, Edit3, Layout, ChevronDown, Plus, Code, Radio, Zap,
   X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, BookOpen, Image as ImageIcon,
-  UploadCloud
+  UploadCloud, Globe, Sparkles, CheckCircle2, AlertCircle, RotateCw, ExternalLink, RefreshCw, Play, PlayCircle
 } from "lucide-react";
+
 import { GlassToast } from "./components/GlassToast";
 import BatchManagementTab from "./BatchManagementTab";
 
@@ -36,6 +37,7 @@ const getLessonIcon = (type: string) => {
 const CourseBuilder = () => {
   const { courseId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Course State
   const [courseTitle, setCourseTitle] = useState("Loading...");
@@ -51,7 +53,7 @@ const CourseBuilder = () => {
 
   // UI State
   const [expandedModules, setExpandedModules] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState("Curriculum");
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "Curriculum");
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
@@ -64,6 +66,17 @@ const CourseBuilder = () => {
   // Analytics State
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  // Languages State
+  const [languagesList, setLanguagesList] = useState<any[]>([]);
+  const [loadingLanguages, setLoadingLanguages] = useState(false);
+  const [isGeneratingHindi, setIsGeneratingHindi] = useState(false);
+  const [hindiProgressData, setHindiProgressData] = useState<any>(null);
+  const [isGeneratingTamil, setIsGeneratingTamil] = useState(false);
+  const [tamilProgressData, setTamilProgressData] = useState<any>(null);
+  const [isGeneratingHindiSubs, setIsGeneratingHindiSubs] = useState(false);
+  const [isGeneratingTamilSubs, setIsGeneratingTamilSubs] = useState(false);
+  const [videoSummary, setVideoSummary] = useState<any>(null);
 
   // Settings & Pricing State
   const [priceType, setPriceType] = useState("Free");
@@ -178,6 +191,9 @@ const CourseBuilder = () => {
       } catch (err) {
         console.error("Failed to load batches:", err);
       }
+
+      // Load course languages
+      fetchLanguages();
       
     } catch (err) {
       console.error("Failed to load curriculum", err);
@@ -186,6 +202,145 @@ const CourseBuilder = () => {
       setLoading(false);
     }
   };
+
+  const fetchLanguages = async () => {
+    try {
+      setLoadingLanguages(true);
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/languages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setLanguagesList(res.data.languages || []);
+      if (res.data.video_summary) {
+        setVideoSummary(res.data.video_summary);
+      }
+      const hi = res.data.languages?.find((l: any) => l.language_code === 'hi');
+      if (hi) {
+        setHindiProgressData(hi);
+        if (hi.status === 'GENERATING') {
+          setIsGeneratingHindi(true);
+        }
+      }
+      const ta = res.data.languages?.find((l: any) => l.language_code === 'ta');
+      if (ta) {
+        setTamilProgressData(ta);
+        if (ta.status === 'GENERATING') {
+          setIsGeneratingTamil(true);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load course languages", e);
+    } finally {
+      setLoadingLanguages(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "Languages") {
+      fetchLanguages();
+    }
+  }, [activeTab, courseId]);
+
+  const handleGenerateHindi = async () => {
+    try {
+      setIsGeneratingHindi(true);
+      setHindiProgressData((prev: any) => ({ ...prev, status: 'GENERATING', progress: 5, current_file: 'Initializing AI translation...' }));
+      const token = localStorage.getItem("token");
+      await axios.post(`${API_BASE_URL}/courses/${courseId}/languages/hi/generate`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      triggerToast("Hindi course generation (PDFs + Subtitles) started!", "success");
+      fetchLanguages();
+    } catch (err: any) {
+      setIsGeneratingHindi(false);
+      triggerToast(err.response?.data?.detail || "Failed to start Hindi translation", "error");
+    }
+  };
+
+  const handleGenerateTamil = async () => {
+    try {
+      setIsGeneratingTamil(true);
+      setTamilProgressData((prev: any) => ({ ...prev, status: 'GENERATING', progress: 5, current_file: 'Initializing AI translation...' }));
+      const token = localStorage.getItem("token");
+      await axios.post(`${API_BASE_URL}/courses/${courseId}/languages/ta/generate`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      triggerToast("Tamil course generation (PDFs + Subtitles) started!", "success");
+      fetchLanguages();
+    } catch (err: any) {
+      setIsGeneratingTamil(false);
+      triggerToast(err.response?.data?.detail || "Failed to start Tamil translation", "error");
+    }
+  };
+
+  const handleGenerateSubtitles = async (lang: 'hi' | 'ta') => {
+    try {
+      if (lang === 'hi') setIsGeneratingHindiSubs(true);
+      else setIsGeneratingTamilSubs(true);
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`${API_BASE_URL}/courses/${courseId}/subtitles/${lang}/generate`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      triggerToast(res.data.message || `Started generating ${lang === 'hi' ? 'Hindi' : 'Tamil'} video subtitles!`, "success");
+      setTimeout(() => fetchLanguages(), 1500);
+    } catch (err: any) {
+      triggerToast(err.response?.data?.detail || "Failed to trigger subtitle generation", "error");
+    } finally {
+      if (lang === 'hi') setIsGeneratingHindiSubs(false);
+      else setIsGeneratingTamilSubs(false);
+    }
+  };
+
+
+  useEffect(() => {
+    let interval: any = null;
+    if (isGeneratingHindi || hindiProgressData?.status === 'GENERATING') {
+      interval = setInterval(async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/languages/hi/status`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setHindiProgressData(res.data);
+          if (res.data.status === 'READY') {
+            setIsGeneratingHindi(false);
+            triggerToast("🎉 Hindi course notes generated successfully!", "success");
+            fetchLanguages();
+          } else if (res.data.status === 'FAILED') {
+            setIsGeneratingHindi(false);
+            triggerToast("Hindi generation encountered errors.", "error");
+            fetchLanguages();
+          }
+        } catch (e) {}
+      }, 2500);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [isGeneratingHindi, hindiProgressData?.status, courseId]);
+
+  useEffect(() => {
+    let interval: any = null;
+    if (isGeneratingTamil || tamilProgressData?.status === 'GENERATING') {
+      interval = setInterval(async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/languages/ta/status`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setTamilProgressData(res.data);
+          if (res.data.status === 'READY') {
+            setIsGeneratingTamil(false);
+            triggerToast("🎉 Tamil course notes generated successfully!", "success");
+            fetchLanguages();
+          } else if (res.data.status === 'FAILED') {
+            setIsGeneratingTamil(false);
+            triggerToast("Tamil generation encountered errors.", "error");
+            fetchLanguages();
+          }
+        } catch (e) {}
+      }, 2500);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [isGeneratingTamil, tamilProgressData?.status, courseId]);
 
   const handleCreateBatch = async () => {
     if (!newBatchName.trim() || !newBatchSection.trim()) return;
@@ -515,8 +670,8 @@ const CourseBuilder = () => {
   const tabs = [
     { name: "Curriculum", icon: <Layout size={18} /> },
     { name: "Batches", icon: <Users size={18} /> },
+    { name: "Languages", icon: <Globe size={18} /> },
     { name: "Analytics", icon: <BarChart size={18} /> },
-
     { name: "Settings", icon: <Edit3 size={18} /> },
   ];
 
@@ -888,6 +1043,376 @@ const CourseBuilder = () => {
               )}
             </div>
 
+          ) : activeTab === "Languages" ? (
+            <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 w-full max-w-7xl pb-20">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
+                      <Globe size={22} />
+                    </div>
+                    Multilingual Course Studio
+                  </h2>
+                  <p className="text-slate-500 font-medium text-xs sm:text-sm mt-1">
+                    Manage AI-powered PDF & document translations while preserving original English videos and architecture.
+                  </p>
+                </div>
+                <button
+                  onClick={fetchLanguages}
+                  disabled={loadingLanguages}
+                  className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 shadow-sm self-start sm:self-auto flex items-center gap-2 text-xs font-bold transition-all"
+                >
+                  <RefreshCw size={14} className={loadingLanguages ? "animate-spin text-emerald-600" : ""} /> Refresh Status
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                {/* 1. ORIGINAL ENGLISH MASTER CARD */}
+                <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/80 shadow-[0_10px_30px_rgb(0,0,0,0.03)] flex flex-col justify-between relative overflow-hidden group hover:border-slate-300 transition-all">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all pointer-events-none" />
+                  <div className="flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200/80 text-blue-700 font-black text-xs flex items-center justify-center shadow-xs shrink-0 tracking-wider">
+                          EN
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight whitespace-nowrap">English</h3>
+                          <span className="text-[11px] font-bold text-slate-400">Master Source</span>
+                        </div>
+                      </div>
+                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs shrink-0 whitespace-nowrap">
+                        <CheckCircle2 size={11} /> Master
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6 min-h-[48px]">
+                      Primary master curriculum containing all uploaded modules, native videos, coding challenges, and English PDF notes.
+                    </p>
+
+                    <div className="mt-auto mb-6">
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex justify-between items-center text-xs font-bold text-slate-600 min-h-[58px]">
+                        <span>Course Modules</span>
+                        <span className="font-black text-slate-900 bg-white px-2.5 py-1 rounded-xl border border-slate-200/60 shadow-2xs">
+                          {modules.length} Modules
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate(`/course/${courseId}/player`)}
+                    className="w-full h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98"
+                  >
+                    <ExternalLink size={15} /> Preview English Course
+                  </button>
+                </div>
+
+                {/* 2. HINDI TRANSLATION CARD */}
+                <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/80 shadow-[0_10px_30px_rgb(0,0,0,0.03)] flex flex-col justify-between relative overflow-hidden group hover:border-emerald-200 transition-all">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-all pointer-events-none" />
+                  <div className="flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 font-black text-xs flex items-center justify-center shadow-xs shrink-0 tracking-wider">
+                          HI
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight whitespace-nowrap">हिन्दी (Hindi)</h3>
+                          <span className="text-[11px] font-bold text-slate-400">IndicTrans2 AI</span>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        {hindiProgressData?.status === 'READY' ? (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                            <CheckCircle2 size={11} /> Ready
+                          </span>
+                        ) : hindiProgressData?.status === 'GENERATING' || isGeneratingHindi ? (
+                          <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs animate-pulse whitespace-nowrap">
+                            <RotateCw size={11} className="animate-spin" /> Translating...
+                          </span>
+                        ) : hindiProgressData?.status === 'FAILED' ? (
+                          <span className="bg-red-50 text-red-700 border border-red-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                            <AlertCircle size={11} /> Failed
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider whitespace-nowrap">
+                            Not Generated
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6 min-h-[48px]">
+                      Translates English PDF notes into Devanagari Hindi while preserving code, layout geometry, and original English videos.
+                    </p>
+
+                    {/* PROGRESS BAR OR STATUS INFO */}
+                    <div className="mt-auto mb-4">
+                      {(isGeneratingHindi || hindiProgressData?.status === 'GENERATING') ? (
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 min-h-[58px] flex flex-col justify-center">
+                          <div className="flex justify-between items-center text-xs font-black text-slate-800 mb-1.5">
+                            <span className="flex items-center gap-1.5"><Sparkles size={13} className="text-emerald-500" /> Translating</span>
+                            <span className="text-emerald-600">{hindiProgressData?.progress || 10}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden mb-1.5">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.max(hindiProgressData?.progress || 10, 8)}%` }}
+                              transition={{ duration: 0.5 }}
+                              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
+                            />
+                          </div>
+                          <div className="text-[10px] font-medium text-slate-500 truncate">
+                            {hindiProgressData?.current_file || "Translating documents..."}
+                          </div>
+                        </div>
+                      ) : hindiProgressData?.status === 'READY' ? (
+                        <div className="bg-emerald-50/60 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between text-xs font-bold text-emerald-900 min-h-[58px]">
+                          <span>Converted Documents</span>
+                          <span className="font-black bg-white px-2.5 py-1 rounded-xl border border-emerald-200 shadow-2xs">
+                            {hindiProgressData.total_files === 0 ? "No PDF Notes in Course" : `${hindiProgressData.completed_files || 0} / ${hindiProgressData.total_files} Hindi PDFs Active`}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between text-xs font-bold text-slate-500 min-h-[58px]">
+                          <span>Status</span>
+                          <span className="font-bold text-slate-400">{hindiProgressData?.total_files === 0 ? "0 PDFs to convert" : "Ready to Convert"}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* VIDEO SUBTITLES STATUS WIDGET */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 mb-6 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 font-bold text-slate-700">
+                        <PlayCircle size={15} className="text-emerald-500" />
+                        <span>Hindi Subtitles</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                          {videoSummary?.hindi_subtitles_ready || hindiProgressData?.subtitles_ready || 0}/{videoSummary?.total_videos || hindiProgressData?.total_videos || 0}
+                        </span>
+                        <button
+                          onClick={() => handleGenerateSubtitles('hi')}
+                          disabled={isGeneratingHindiSubs}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all border border-emerald-200 shadow-xs"
+                          title="Generate / Re-sync Hindi Subtitles"
+                        >
+                          <Sparkles size={11} className={isGeneratingHindiSubs ? "animate-spin" : ""} />
+                          {isGeneratingHindiSubs ? "Generating..." : "Generate"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BUTTON ACTIONS */}
+                  <div className="flex gap-2.5">
+                    {hindiProgressData?.status === 'READY' ? (
+                      <>
+                        <button
+                          onClick={() => navigate(`/course/${courseId}/player?lang=hi`)}
+                          className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98"
+                        >
+                          <ExternalLink size={15} /> Open Hindi
+                        </button>
+                        <button
+                          onClick={handleGenerateHindi}
+                          disabled={isGeneratingHindi}
+                          className="h-12 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 shadow-xs"
+                          title="Regenerate all Hindi PDFs"
+                        >
+                          <RotateCw size={14} /> Regenerate
+                        </button>
+                      </>
+                    ) : hindiProgressData?.status === 'GENERATING' || isGeneratingHindi ? (
+                      <div className="flex gap-2 w-full">
+                        <button
+                          disabled
+                          className="flex-1 h-12 bg-slate-100 text-slate-400 border border-slate-200 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-not-allowed"
+                        >
+                          <RotateCw size={15} className="animate-spin text-slate-400" /> Translating...
+                        </button>
+                        <button
+                          onClick={handleGenerateHindi}
+                          className="h-12 px-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                          title="Force Re-trigger or Reset"
+                        >
+                          <RotateCw size={13} /> Reset
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleGenerateHindi}
+                        className="w-full h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20 active:scale-98"
+                      >
+                        <Sparkles size={16} /> Generate Hindi Course
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. TAMIL TRANSLATION CARD */}
+                <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/80 shadow-[0_10px_30px_rgb(0,0,0,0.03)] flex flex-col justify-between relative overflow-hidden group hover:border-cyan-200 transition-all">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl group-hover:bg-cyan-500/10 transition-all pointer-events-none" />
+                  <div className="flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-cyan-50 border border-cyan-200/80 text-cyan-700 font-black text-xs flex items-center justify-center shadow-xs shrink-0 tracking-wider">
+                          TA
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight whitespace-nowrap">தமிழ் (Tamil)</h3>
+                          <span className="text-[11px] font-bold text-slate-400">IndicTrans2 AI</span>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        {tamilProgressData?.status === 'READY' ? (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                            <CheckCircle2 size={11} /> Ready
+                          </span>
+                        ) : tamilProgressData?.status === 'GENERATING' || isGeneratingTamil ? (
+                          <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs animate-pulse whitespace-nowrap">
+                            <RotateCw size={11} className="animate-spin" /> Translating...
+                          </span>
+                        ) : tamilProgressData?.status === 'FAILED' ? (
+                          <span className="bg-red-50 text-red-700 border border-red-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                            <AlertCircle size={11} /> Failed
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider whitespace-nowrap">
+                            Not Generated
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6 min-h-[48px]">
+                      Translates all PDF notes into natural modern Tamil while preserving layouts, code blocks, and English lecture videos.
+                    </p>
+
+                    {/* PROGRESS BAR OR STATUS INFO */}
+                    <div className="mt-auto mb-4">
+                      {(isGeneratingTamil || tamilProgressData?.status === 'GENERATING') ? (
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 min-h-[58px] flex flex-col justify-center">
+                          <div className="flex justify-between items-center text-xs font-black text-slate-800 mb-1.5">
+                            <span className="flex items-center gap-1.5"><Sparkles size={13} className="text-cyan-500" /> Translating</span>
+                            <span className="text-cyan-600">{tamilProgressData?.progress || 10}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden mb-1.5">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.max(tamilProgressData?.progress || 10, 8)}%` }}
+                              transition={{ duration: 0.5 }}
+                              className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full"
+                            />
+                          </div>
+                          <div className="text-[10px] font-medium text-slate-500 truncate">
+                            {tamilProgressData?.current_file || "Translating documents..."}
+                          </div>
+                        </div>
+                      ) : tamilProgressData?.status === 'READY' ? (
+                        <div className="bg-cyan-50/60 border border-cyan-100 rounded-2xl p-4 flex items-center justify-between text-xs font-bold text-cyan-900 min-h-[58px]">
+                          <span>Converted Documents</span>
+                          <span className="font-black bg-white px-2.5 py-1 rounded-xl border border-cyan-200 shadow-2xs">
+                            {tamilProgressData.total_files === 0 ? "No PDF Notes in Course" : `${tamilProgressData.completed_files || 0} / ${tamilProgressData.total_files} Tamil PDFs Active`}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between text-xs font-bold text-slate-500 min-h-[58px]">
+                          <span>Status</span>
+                          <span className="font-bold text-slate-400">{tamilProgressData?.total_files === 0 ? "0 PDFs to convert" : "Ready to Convert"}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* VIDEO SUBTITLES STATUS WIDGET */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 mb-6 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 font-bold text-slate-700">
+                        <PlayCircle size={15} className="text-cyan-500" />
+                        <span>Tamil Subtitles</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                          {videoSummary?.tamil_subtitles_ready || tamilProgressData?.subtitles_ready || 0}/{videoSummary?.total_videos || tamilProgressData?.total_videos || 0}
+                        </span>
+                        <button
+                          onClick={() => handleGenerateSubtitles('ta')}
+                          disabled={isGeneratingTamilSubs}
+                          className="px-2.5 py-1 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all border border-cyan-200 shadow-xs"
+                          title="Generate / Re-sync Tamil Subtitles"
+                        >
+                          <Sparkles size={11} className={isGeneratingTamilSubs ? "animate-spin" : ""} />
+                          {isGeneratingTamilSubs ? "Generating..." : "Generate"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BUTTON ACTIONS */}
+                  <div className="flex gap-2.5">
+                    {tamilProgressData?.status === 'READY' ? (
+                      <>
+                        <button
+                          onClick={() => navigate(`/course/${courseId}/player?lang=ta`)}
+                          className="flex-1 h-12 bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98"
+                        >
+                          <ExternalLink size={15} /> Open Tamil
+                        </button>
+                        <button
+                          onClick={handleGenerateTamil}
+                          disabled={isGeneratingTamil}
+                          className="h-12 px-4 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-98 shadow-xs"
+                          title="Regenerate all Tamil PDFs"
+                        >
+                          <RotateCw size={14} /> Regenerate
+                        </button>
+                      </>
+                    ) : tamilProgressData?.status === 'GENERATING' || isGeneratingTamil ? (
+                      <div className="flex gap-2 w-full">
+                        <button
+                          disabled
+                          className="flex-1 h-12 bg-slate-100 text-slate-400 border border-slate-200 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-not-allowed"
+                        >
+                          <RotateCw size={15} className="animate-spin text-slate-400" /> Translating...
+                        </button>
+                        <button
+                          onClick={handleGenerateTamil}
+                          className="h-12 px-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                          title="Force Re-trigger or Reset"
+                        >
+                          <RotateCw size={13} /> Reset
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleGenerateTamil}
+                        className="w-full h-12 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-500/20 active:scale-98"
+                      >
+                        <Sparkles size={16} /> Generate Tamil Course
+                      </button>
+                    )}
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* ARCHITECTURE INFORMATION BOX */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-3xl p-6 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0 shadow-sm">
+                  <Sparkles size={20} className="text-emerald-500" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-900 mb-1">IndicTrans2 AI Document Translation Engine</h4>
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                    Course documents are processed through PyMuPDF and the pretrained AI4Bharat IndicTrans2 distilled model. Text formatting, mathematical expressions, code blocks, URLs, and original English videos remain completely preserved. When students select Hindi or Tamil online or in LAN ShareHub, translated PDFs will be served automatically.
+                  </p>
+                </div>
+              </div>
+            </div>
+
           ) : activeTab === "Communications" ? (
             <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-2xl px-2">
               <h2 className="text-4xl font-black tracking-tight mb-2">Communications</h2>
@@ -936,6 +1461,187 @@ const CourseBuilder = () => {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          ) : activeTab === "Languages" ? (
+            <div className="animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-4xl pb-20">
+              {/* Header */}
+              <div className="mb-8">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-700 font-bold text-xs tracking-wide uppercase mb-3">
+                  <Sparkles size={14} className="text-emerald-600" /> AI Multilingual Engine
+                </div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Language Versions & Translation</h2>
+                <p className="text-slate-500 text-lg">
+                  Translate your course curriculum and PDF notes to Hindi (हिन्दी) using high-precision neural translation.
+                </p>
+              </div>
+
+              {/* Language Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                {/* 1. English (Original) Card */}
+                <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-slate-100 rounded-full blur-3xl -z-10 pointer-events-none" />
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">🇬🇧</span>
+                        <div>
+                          <h3 className="font-extrabold text-slate-900 text-xl">English</h3>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Original Base Version</p>
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">
+                        <CheckCircle2 size={12} /> Active
+                      </span>
+                    </div>
+
+                    <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+                      Primary master course. All new modules, lessons, and PDF note uploads are added here first.
+                    </p>
+
+                    <div className="space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                      <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
+                        <span className="flex items-center gap-2"><BookOpen size={14} className="text-slate-400" /> Modules</span>
+                        <span className="font-bold text-slate-900">{modules.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-slate-600 font-semibold">
+                        <span className="flex items-center gap-2"><FileText size={14} className="text-slate-400" /> Total Lessons</span>
+                        <span className="font-bold text-slate-900">
+                          {modules.reduce((acc, m) => acc + (m.lessons?.length || 0), 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate(`/dashboard/course/${courseId}/player`)}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3.5 px-4 rounded-2xl transition-all text-sm"
+                  >
+                    <ExternalLink size={16} /> Preview English Course
+                  </button>
+                </div>
+
+                {/* 2. Hindi (हिन्दी) Card */}
+                <div className="bg-white rounded-3xl p-8 border border-emerald-200/80 shadow-[0_8px_30px_rgb(5,150,105,0.06)] flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-full blur-3xl -z-10 pointer-events-none" />
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">🇮🇳</span>
+                        <div>
+                          <h3 className="font-extrabold text-slate-900 text-xl">हिन्दी (Hindi)</h3>
+                          <p className="text-xs text-emerald-600 font-bold uppercase tracking-wider">AI IndicTrans2 Engine</p>
+                        </div>
+                      </div>
+
+                      {hindiProgressData?.status === 'READY' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">
+                          <CheckCircle2 size={12} /> Ready
+                        </span>
+                      ) : isGeneratingHindi || hindiProgressData?.status === 'GENERATING' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-blue-100 text-blue-800 animate-pulse">
+                          <RotateCw size={12} className="animate-spin" /> {hindiProgressData?.progress || 10}%
+                        </span>
+                      ) : hindiProgressData?.status === 'FAILED' ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-800">
+                          <AlertCircle size={12} /> Failed
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-slate-100 text-slate-600">
+                          Not Generated
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-slate-600 text-sm mb-6 leading-relaxed">
+                      Converts all PDF notes and document content into clear Hindi with HarfBuzz Devanagari font rendering while keeping code syntax protected.
+                    </p>
+
+                    {/* Progress Bar when Generating */}
+                    {(isGeneratingHindi || hindiProgressData?.status === 'GENERATING') && (
+                      <div className="mb-6 p-4 bg-blue-50/80 border border-blue-200/80 rounded-2xl">
+                        <div className="flex items-center justify-between text-xs font-bold text-blue-900 mb-2">
+                          <span className="flex items-center gap-2">
+                            <RotateCw size={14} className="animate-spin text-blue-600" />
+                            {hindiProgressData?.stage_message || "Translating course PDF notes to Hindi..."}
+                          </span>
+                          <span>{hindiProgressData?.progress || 15}%</span>
+                        </div>
+                        <div className="w-full bg-blue-200/60 rounded-full h-2.5 overflow-hidden">
+                          <div
+                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(hindiProgressData?.progress || 10, 8)}%` }}
+                          />
+                        </div>
+                        <p className="text-[11px] text-blue-600 mt-2 font-medium">
+                          ⚡ NVIDIA RTX GPU neural translation in progress. You can stay on this page or check back anytime.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Features list when not generating */}
+                    {!isGeneratingHindi && hindiProgressData?.status !== 'GENERATING' && (
+                      <div className="space-y-2.5 mb-6 text-xs text-slate-600">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                          <span>AI4Bharat IndicTrans2 neural translation</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                          <span>Devanagari Unicode shaping &amp; formatted PDF rendering</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                          <span>Source code syntax &amp; technical term protection</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div>
+                    {hindiProgressData?.status === 'READY' ? (
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={() => navigate(`/dashboard/course/${courseId}/player?lang=hi`)}
+                          className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-2xl transition-all text-sm shadow-lg shadow-emerald-600/20"
+                        >
+                          <Play size={16} /> Preview in Hindi Player
+                        </button>
+                        <button
+                          onClick={handleGenerateHindi}
+                          disabled={isGeneratingHindi}
+                          className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 px-4 rounded-2xl transition-all text-sm"
+                          title="Re-translate all PDF notes"
+                        >
+                          <RefreshCw size={16} /> Re-translate
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleGenerateHindi}
+                        disabled={isGeneratingHindi || hindiProgressData?.status === 'GENERATING'}
+                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black py-4 px-6 rounded-2xl transition-all shadow-xl shadow-emerald-600/20 text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Sparkles size={18} />
+                        {isGeneratingHindi ? "Generating Hindi Version..." : "Generate Hindi Course (हिन्दी)"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Informational Footer Box */}
+              <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-xl flex items-start gap-4">
+                <div className="p-3 bg-white/10 rounded-2xl shrink-0">
+                  <Globe size={24} className="text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-base mb-1">How Multilingual Courses Work in SkillForge</h4>
+                  <p className="text-slate-300 text-xs leading-relaxed">
+                    Generating a Hindi version extracts all PDF notes from this course, applies technical keyword masking to keep code intact, translates sentence-by-sentence via local IndicTrans2 AI, and generates a formatted Devanagari PDF. Students can seamlessly toggle between English and Hindi in the Course Player and download offline Hindi ZIP bundles via ShareHub.
+                  </p>
+                </div>
               </div>
             </div>
           ) : (

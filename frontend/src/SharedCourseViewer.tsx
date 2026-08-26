@@ -10,6 +10,7 @@ import {
   Wifi, Eye, AlertCircle, RefreshCw, Maximize2, BookOpen, Laptop
 } from "lucide-react";
 import { InstallAppModal } from "./components/InstallAppModal";
+import { PdfViewer } from "./components/PdfViewer";
 
 interface LessonItem {
   id: number;
@@ -37,10 +38,13 @@ interface ModuleItem {
 interface SharedCourseData {
   id: number;
   title: string;
+  original_title?: string;
   description: string;
   image_url: string | null;
   accessMode: "VIEW_ONLY" | "ALLOW_DOWNLOAD";
   shareCode: string;
+  current_language?: string;
+  available_languages?: { code: string; name: string; nativeName: string; ready: boolean }[];
   modules: ModuleItem[];
 }
 
@@ -54,6 +58,7 @@ const SharedCourseViewer: React.FC = () => {
   const [course, setCourse] = useState<SharedCourseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [currentLang, setCurrentLang] = useState<string>("en");
 
   const [activeLesson, setActiveLesson] = useState<LessonItem | null>(null);
   // Default open on desktop (>=1024px), closed on mobile/tablet (<1024px)
@@ -92,24 +97,32 @@ const SharedCourseViewer: React.FC = () => {
 
     const sendHeartbeat = async () => {
       try {
-        await axios.post(
+        const res = await axios.post(
           `${API_BASE_URL}/share-sessions/${codeUpper}/heartbeat`,
           { clientId, studentName },
           { headers: { Authorization: `Bearer ${token}` } }
         );
+        if (res.data?.accessMode) {
+          setCourse(prev => {
+            if (prev && prev.accessMode !== res.data.accessMode) {
+              return { ...prev, accessMode: res.data.accessMode };
+            }
+            return prev;
+          });
+        }
       } catch (e) {}
     };
 
     sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 8000);
+    const interval = setInterval(sendHeartbeat, 6000);
     return () => clearInterval(interval);
   }, [codeUpper, token]);
 
-  const fetchSharedCourse = async () => {
+  const fetchSharedCourse = async (lang = currentLang) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await axios.get(`${API_BASE_URL}/share-sessions/${codeUpper}/course`, {
+      const res = await axios.get(`${API_BASE_URL}/share-sessions/${codeUpper}/course?lang=${lang}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -117,10 +130,21 @@ const SharedCourseViewer: React.FC = () => {
       setCourse(data);
 
       if (data.modules && data.modules.length > 0) {
-        // Expand first module by default
-        setExpandedModules([data.modules[0].id]);
-        if (data.modules[0].lessons && data.modules[0].lessons.length > 0) {
-          setActiveLesson(data.modules[0].lessons[0]);
+        if (!activeLesson) {
+          // Expand first module by default
+          setExpandedModules([data.modules[0].id]);
+          if (data.modules[0].lessons && data.modules[0].lessons.length > 0) {
+            setActiveLesson(data.modules[0].lessons[0]);
+          }
+        } else {
+          // Update active lesson with translated content if present
+          for (const m of data.modules) {
+            const found = m.lessons?.find(l => l.id === activeLesson.id);
+            if (found) {
+              setActiveLesson(found);
+              break;
+            }
+          }
         }
       }
 
@@ -132,16 +156,21 @@ const SharedCourseViewer: React.FC = () => {
         } catch (e) {}
       }
     } catch (err: any) {
-      console.error("Failed to load shared course", err);
+      console.error("Fetch shared course error:", err);
       if (err.response?.status === 401 || err.response?.status === 403) {
         localStorage.removeItem(`share_token_${codeUpper}`);
         navigate(`/share/${codeUpper}`);
-      } else {
-        setErrorMsg(err.response?.data?.detail || "Failed to load course contents from the local server.");
+        return;
       }
+      setErrorMsg(err.response?.data?.detail || "Failed to load shared course");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLanguageChange = (langCode: string) => {
+    setCurrentLang(langCode);
+    fetchSharedCourse(langCode);
   };
 
   const toggleModule = (moduleId: number) => {
@@ -190,7 +219,7 @@ const SharedCourseViewer: React.FC = () => {
     if (!token || course?.accessMode !== "ALLOW_DOWNLOAD") return;
     setDownloadingCourse(true);
     const clientId = localStorage.getItem("skillforge_client_id") || "";
-    const downloadUrl = `${API_BASE_URL}/share-sessions/${codeUpper}/download/course?token=${token}&clientId=${clientId}`;
+    const downloadUrl = `${API_BASE_URL}/share-sessions/${codeUpper}/download/course?token=${token}&clientId=${clientId}&lang=${currentLang}`;
     window.location.href = downloadUrl;
     setTimeout(() => setDownloadingCourse(false), 3000);
   };
@@ -227,10 +256,16 @@ const SharedCourseViewer: React.FC = () => {
   // Helper for Google Docs / Drive embed
   const getEmbedUrl = (content?: string | null) => {
     if (!content) return "";
+    if (content.startsWith("/uploads/") || content.startsWith("uploads/")) {
+      return resolveMediaUrl(content);
+    }
     if (content.includes("docs.google.com/forms")) {
       return content.replace(/\/viewform.*/, "/viewform?embedded=true").replace(/\/view.*/, "/viewform?embedded=true");
     }
-    return content.replace("/view", "/preview");
+    if (content.includes("drive.google.com")) {
+      return content.replace("/view", "/preview");
+    }
+    return resolveMediaUrl(content);
   };
 
   // Next / Prev lessons
@@ -260,34 +295,12 @@ const SharedCourseViewer: React.FC = () => {
 
           {/* 1. PDF / NOTES */}
           {(activeLesson.type === "note" || activeLesson.type === "assignment") && (
-            <div className="w-full h-full min-h-[65vh] sm:min-h-[75vh] max-w-6xl rounded-2xl sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/70 bg-white flex flex-col mx-auto">
-              
-              {/* PDF Top Bar for mobile quick controls */}
-              <div className="bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between text-xs font-semibold shrink-0">
-                <div className="flex items-center gap-2 truncate">
-                  <FileText size={15} className="text-amber-400 shrink-0" />
-                  <span className="truncate">{activeLesson.title}</span>
-                </div>
-                {mediaStreamUrl && (
-                  <a
-                    href={mediaStreamUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-[11px] font-bold shrink-0 transition-colors"
-                  >
-                    <Maximize2 size={13} />
-                    <span className="hidden xs:inline">Fullscreen / Download</span>
-                    <span className="xs:hidden">Open</span>
-                  </a>
-                )}
-              </div>
-
+            <div className="w-full h-full min-h-[65vh] sm:min-h-[75vh] max-w-6xl rounded-2xl sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/70 bg-slate-900 flex flex-col mx-auto">
               {mediaStreamUrl ? (
-                <iframe
-                  key={activeLesson.id}
-                  src={`${mediaStreamUrl}#toolbar=1&navpanes=0`}
+                <PdfViewer
+                  blobUrl={mediaStreamUrl}
                   title={activeLesson.title}
-                  className="w-full flex-1 border-0 bg-white"
+                  isViewOnly={course?.accessMode === "VIEW_ONLY"}
                 />
               ) : activeLesson.rawUrl ? (
                 <iframe
@@ -335,6 +348,12 @@ const SharedCourseViewer: React.FC = () => {
                     controls
                     autoPlay
                     playsInline
+                    controlsList={course?.accessMode === "VIEW_ONLY" ? "nodownload" : undefined}
+                    onContextMenu={(e) => {
+                      if (course?.accessMode === "VIEW_ONLY") {
+                        e.preventDefault();
+                      }
+                    }}
                     className="w-full h-full object-contain bg-black"
                     src={mediaStreamUrl}
                   >
@@ -511,6 +530,24 @@ const SharedCourseViewer: React.FC = () => {
         </button>
 
         <div className="flex items-center gap-2">
+          {course.available_languages && course.available_languages.length > 1 && (
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+              {course.available_languages.map(l => (
+                <button
+                  key={l.code}
+                  onClick={() => handleLanguageChange(l.code)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all ${
+                    currentLang === l.code
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {l.code === 'hi' ? '🇮🇳 हिन्दी' : (l.code === 'ta' ? '🇮🇳 தமிழ்' : '🇬🇧 EN')}
+                </button>
+              ))}
+            </div>
+          )}
+
           {course.accessMode === "ALLOW_DOWNLOAD" && (
             <button
               onClick={handleDownloadCourse}
@@ -745,18 +782,33 @@ const SharedCourseViewer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Offline App / Standalone Player Button */}
-            <button
-              onClick={() => setShowInstallModal(true)}
-              className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-              title="Install Desktop App or open Offline Player to view downloaded ZIPs anytime"
-            >
-              <Laptop size={14} className="text-indigo-600 shrink-0" />
-              <span className="hidden sm:inline">Offline App</span>
-            </button>
+            {/* Offline App / Standalone Player Button: ONLY if ALLOW_DOWNLOAD */}
+            {course?.accessMode === "ALLOW_DOWNLOAD" && (
+              <button
+                onClick={() => setShowInstallModal(true)}
+                className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="Install Desktop App or open Offline Player to view downloaded ZIPs anytime"
+              >
+                <Laptop size={14} className="text-indigo-600 shrink-0" />
+                <span className="hidden sm:inline">Offline App</span>
+              </button>
+            )}
 
-            {/* Offline Badge */}
-            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
+            {/* Mode Badge Indicator */}
+            {course?.accessMode === "VIEW_ONLY" ? (
+              <div className="flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200/80 px-2.5 py-1 rounded-full text-[11px] font-extrabold shadow-2xs">
+                <Eye size={12} className="shrink-0 text-amber-600" />
+                <span className="hidden xs:inline">View Only</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-800 border border-indigo-200/80 px-2.5 py-1 rounded-full text-[11px] font-extrabold shadow-2xs">
+                <Download size={12} className="shrink-0 text-indigo-600" />
+                <span className="hidden xs:inline">Downloads Allowed</span>
+              </div>
+            )}
+
+            {/* Offline Local LAN Badge */}
+            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-2xs">
               <Wifi size={12} className="shrink-0" />
               <span className="hidden xs:inline">Local LAN</span>
             </div>
@@ -764,7 +816,7 @@ const SharedCourseViewer: React.FC = () => {
             {/* Exit button for fast access */}
             <button
               onClick={() => navigate(`/share/${codeUpper}`)}
-              className="p-2 sm:px-3 sm:py-1.5 text-slate-500 hover:text-slate-900 bg-white border border-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+              className="p-2 sm:px-3 sm:py-1.5 text-slate-500 hover:text-slate-900 bg-white border border-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
               title="Exit to Gateway"
             >
               <ChevronLeft size={15} />
@@ -783,6 +835,7 @@ const SharedCourseViewer: React.FC = () => {
       <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
+        shareCode={codeUpper}
       />
 
     </div>

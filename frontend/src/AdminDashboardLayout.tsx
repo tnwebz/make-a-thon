@@ -22,7 +22,6 @@ function useOnClickOutside(ref: any, handler: any) {
         };
     }, [ref, handler]);
 }
-
 const AdminDashboardLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
