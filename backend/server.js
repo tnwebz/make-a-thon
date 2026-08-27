@@ -63,6 +63,7 @@ app.use('/api/v1/profile', require('./routes/profile'));
 app.use('/api/v1/offline', require('./routes/offline_sharing'));
 app.use('/api/v1/share-sessions', require('./routes/share_sessions'));
 app.use('/api/v1/downloads', require('./routes/downloads'));
+app.use('/api/v1/quizzes', require('./routes/quizzes').router);
 
 // 🎬 Mobile App Video Player — serves Plyr with a real HTTP origin
 // YouTube blocks embedding from null/about:blank origins (React Native WebView inline HTML)

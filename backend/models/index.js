@@ -177,6 +177,76 @@ const VideoSubtitle = sequelize.define('VideoSubtitle', {
     error_message: { type: DataTypes.TEXT, allowNull: true },
 }, { timestamps: true, tableName: 'video_subtitles' });
 
+const VideoDubbedAsset = sequelize.define('VideoDubbedAsset', {
+    content_item_id: { type: DataTypes.INTEGER, allowNull: false },
+    course_id: { type: DataTypes.INTEGER, allowNull: true },
+    language_code: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'ta' },
+    dubbed_video_path: { type: DataTypes.TEXT, allowNull: true }, // /uploads/media/dubbed/ta/xxx_ta.mp4
+    voice_audio_path: { type: DataTypes.TEXT, allowNull: true },  // /uploads/media/dubbed/ta/xxx_ta_voice.wav
+    reference_voice_path: { type: DataTypes.TEXT, allowNull: true }, // /uploads/media/ref_voices/xxx_ref.wav
+    reference_transcript: { type: DataTypes.TEXT, allowNull: true },
+    reference_mode: { type: DataTypes.STRING(20), defaultValue: 'auto' }, // 'auto' | 'manual'
+    ref_start_time: { type: DataTypes.FLOAT, allowNull: true },
+    ref_end_time: { type: DataTypes.FLOAT, allowNull: true },
+    status: { type: DataTypes.STRING, defaultValue: 'READY' }, // READY | FAILED | GENERATING | NOT_GENERATED
+    progress: { type: DataTypes.INTEGER, defaultValue: 0 },
+    error_message: { type: DataTypes.TEXT, allowNull: true },
+}, { timestamps: true, tableName: 'video_dubbed_assets' });
+
+// ============================================
+// 📝 MANUAL QUIZ & MULTILINGUAL QUIZ MODELS
+// ============================================
+
+const Quiz = sequelize.define('Quiz', {
+    content_item_id: { type: DataTypes.INTEGER, allowNull: false },
+    course_id: { type: DataTypes.INTEGER, allowNull: false },
+    title: { type: DataTypes.STRING, allowNull: false },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    quiz_type: { type: DataTypes.STRING, defaultValue: 'manual' }, // 'manual' | 'external'
+    duration_minutes: { type: DataTypes.INTEGER, defaultValue: 15 },
+    is_mandatory: { type: DataTypes.BOOLEAN, defaultValue: false },
+    created_by: { type: DataTypes.INTEGER, allowNull: true },
+}, { timestamps: true, tableName: 'quizzes' });
+
+const QuizQuestion = sequelize.define('QuizQuestion', {
+    quiz_id: { type: DataTypes.INTEGER, allowNull: false },
+    question_text: { type: DataTypes.TEXT, allowNull: false },
+    order_index: { type: DataTypes.INTEGER, defaultValue: 1 },
+    correct_option_index: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }, // 0, 1, 2, or 3
+}, { timestamps: true, tableName: 'quiz_questions' });
+
+const QuizOption = sequelize.define('QuizOption', {
+    question_id: { type: DataTypes.INTEGER, allowNull: false },
+    option_text: { type: DataTypes.TEXT, allowNull: false },
+    option_index: { type: DataTypes.INTEGER, allowNull: false }, // 0, 1, 2, or 3
+}, { timestamps: true, tableName: 'quiz_options' });
+
+const QuizQuestionTranslation = sequelize.define('QuizQuestionTranslation', {
+    question_id: { type: DataTypes.INTEGER, allowNull: false },
+    language_code: { type: DataTypes.STRING(10), allowNull: false }, // 'hi', 'ta'
+    translated_text: { type: DataTypes.TEXT, allowNull: false },
+    source_checksum: { type: DataTypes.STRING, allowNull: true },
+}, { timestamps: true, tableName: 'quiz_question_translations' });
+
+const QuizOptionTranslation = sequelize.define('QuizOptionTranslation', {
+    option_id: { type: DataTypes.INTEGER, allowNull: false },
+    language_code: { type: DataTypes.STRING(10), allowNull: false }, // 'hi', 'ta'
+    translated_text: { type: DataTypes.TEXT, allowNull: false },
+    source_checksum: { type: DataTypes.STRING, allowNull: true },
+}, { timestamps: true, tableName: 'quiz_option_translations' });
+
+const QuizResult = sequelize.define('QuizResult', {
+    quiz_id: { type: DataTypes.INTEGER, allowNull: false },
+    user_id: { type: DataTypes.INTEGER, allowNull: false },
+    score: { type: DataTypes.INTEGER, allowNull: false },
+    total_questions: { type: DataTypes.INTEGER, allowNull: false },
+    percentage: { type: DataTypes.INTEGER, allowNull: false },
+    selected_answers: { type: DataTypes.TEXT, allowNull: true }, // JSON map: { [question_id]: selected_option_index }
+    language_code: { type: DataTypes.STRING(10), defaultValue: 'en' },
+    status: { type: DataTypes.STRING, defaultValue: 'COMPLETED' },
+    submitted_at: { type: DataTypes.DATE, defaultValue: Sequelize.NOW },
+}, { timestamps: true, tableName: 'quiz_results' });
+
 // Setup Relationships
 SchoolClass.hasMany(User, { foreignKey: 'school_class_id', as: 'students' });
 User.belongsTo(SchoolClass, { foreignKey: 'school_class_id', as: 'schoolClass' });
@@ -198,6 +268,34 @@ ContentItemTranslation.belongsTo(ContentItem, { foreignKey: 'content_item_id', a
 
 ContentItem.hasMany(VideoSubtitle, { foreignKey: 'content_item_id', as: 'subtitles' });
 VideoSubtitle.belongsTo(ContentItem, { foreignKey: 'content_item_id', as: 'contentItem' });
+
+ContentItem.hasMany(VideoDubbedAsset, { foreignKey: 'content_item_id', as: 'dubbed_assets' });
+VideoDubbedAsset.belongsTo(ContentItem, { foreignKey: 'content_item_id', as: 'contentItem' });
+
+// Quiz Relationships
+ContentItem.hasOne(Quiz, { foreignKey: 'content_item_id', as: 'quiz' });
+Quiz.belongsTo(ContentItem, { foreignKey: 'content_item_id', as: 'contentItem' });
+
+Course.hasMany(Quiz, { foreignKey: 'course_id', as: 'quizzes' });
+Quiz.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
+
+Quiz.hasMany(QuizQuestion, { foreignKey: 'quiz_id', as: 'questions' });
+QuizQuestion.belongsTo(Quiz, { foreignKey: 'quiz_id', as: 'quiz' });
+
+QuizQuestion.hasMany(QuizOption, { foreignKey: 'question_id', as: 'options' });
+QuizOption.belongsTo(QuizQuestion, { foreignKey: 'question_id', as: 'question' });
+
+QuizQuestion.hasMany(QuizQuestionTranslation, { foreignKey: 'question_id', as: 'translations' });
+QuizQuestionTranslation.belongsTo(QuizQuestion, { foreignKey: 'question_id', as: 'question' });
+
+QuizOption.hasMany(QuizOptionTranslation, { foreignKey: 'option_id', as: 'translations' });
+QuizOptionTranslation.belongsTo(QuizOption, { foreignKey: 'option_id', as: 'option' });
+
+Quiz.hasMany(QuizResult, { foreignKey: 'quiz_id', as: 'results' });
+QuizResult.belongsTo(Quiz, { foreignKey: 'quiz_id', as: 'quiz' });
+
+User.hasMany(QuizResult, { foreignKey: 'user_id', as: 'quiz_results' });
+QuizResult.belongsTo(User, { foreignKey: 'user_id', as: 'student' });
 
 User.hasMany(Enrollment, { foreignKey: 'user_id', as: 'enrollments' });
 Enrollment.belongsTo(User, { foreignKey: 'user_id', as: 'student' });
@@ -261,6 +359,13 @@ module.exports = {
     CourseVersion,
     ContentItemTranslation,
     VideoSubtitle,
+    VideoDubbedAsset,
+    Quiz,
+    QuizQuestion,
+    QuizOption,
+    QuizQuestionTranslation,
+    QuizOptionTranslation,
+    QuizResult,
     Enrollment,
     Submission,
     CodeTest,

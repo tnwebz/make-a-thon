@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { API_BASE_URL } from "./config";
+import { API_BASE_URL, resolveMediaUrl } from "./config";
 import axios from "axios";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import {
   ArrowLeft, Video, HelpCircle, FileText, Star,
   Trash2, Edit3, Layout, ChevronDown, Plus, Code, Radio, Zap,
   X, Clock, Lock, BarChart, GripVertical, Save, Users, Award, TrendingUp, BookOpen, Image as ImageIcon,
-  UploadCloud, Globe, Sparkles, CheckCircle2, AlertCircle, RotateCw, ExternalLink, RefreshCw, Play, PlayCircle
+  UploadCloud, Globe, Sparkles, CheckCircle2, AlertCircle, RotateCw, ExternalLink, RefreshCw, Play, PlayCircle,
+  Mic, Volume2, Sliders, Music
 } from "lucide-react";
 
 import { GlassToast } from "./components/GlassToast";
@@ -19,6 +20,20 @@ interface CodeProblem {
   description: string;
   difficulty: string;
   testCases: { input: string; output: string }[];
+}
+
+interface QuizOptionForm {
+  id?: number;
+  option_text: string;
+  option_index: number;
+}
+
+interface QuizQuestionForm {
+  id?: number;
+  question_text: string;
+  order_index: number;
+  correct_option_index: number; // 0, 1, 2, or 3
+  options: QuizOptionForm[];
 }
 
 const getLessonIcon = (type: string) => {
@@ -108,6 +123,36 @@ const CourseBuilder = () => {
     { title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }
   ]);
 
+  // Quiz Builder State
+  const [quizType, setQuizType] = useState<"manual" | "external">("manual");
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestionForm[]>([
+    {
+      question_text: "",
+      order_index: 1,
+      correct_option_index: 0,
+      options: [
+        { option_text: "", option_index: 0 },
+        { option_text: "", option_index: 1 },
+        { option_text: "", option_index: 2 },
+        { option_text: "", option_index: 3 },
+      ]
+    }
+  ]);
+
+  // 🎙️ Multilingual Voice Studio State (Tamil & Hindi)
+  const [voiceModalItem, setVoiceModalItem] = useState<any | null>(null);
+  const [selectedVoiceLang, setSelectedVoiceLang] = useState<"ta" | "hi">("ta");
+  const [voiceMode, setVoiceMode] = useState<"auto" | "manual">("auto");
+  const [voiceStartTime, setVoiceStartTime] = useState("0");
+  const [voiceEndTime, setVoiceEndTime] = useState("12");
+  const [customTranscript, setCustomTranscript] = useState("");
+  const [extractedRefVoice, setExtractedRefVoice] = useState<any | null>(null);
+  const [isExtractingRef, setIsExtractingRef] = useState(false);
+  const [isGeneratingVoiceDub, setIsGeneratingVoiceDub] = useState(false);
+  const [isPreviewingVoiceDub, setIsPreviewingVoiceDub] = useState(false);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
+  const [voiceDubStatus, setVoiceDubStatus] = useState<any | null>(null);
+
   const resetForm = () => {
     setItemTitle("");
     setItemUrl("");
@@ -118,6 +163,20 @@ const CourseBuilder = () => {
     setDuration("");
     setIsMandatory(false);
     setProblems([{ title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }]);
+    setQuizType("manual");
+    setQuizQuestions([
+      {
+        question_text: "",
+        order_index: 1,
+        correct_option_index: 0,
+        options: [
+          { option_text: "", option_index: 0 },
+          { option_text: "", option_index: 1 },
+          { option_text: "", option_index: 2 },
+          { option_text: "", option_index: 3 },
+        ]
+      }
+    ]);
   };
 
 
@@ -342,6 +401,155 @@ const CourseBuilder = () => {
     return () => { if (interval) clearInterval(interval); };
   }, [isGeneratingTamil, tamilProgressData?.status, courseId]);
 
+  // Open Voice Modal & Fetch Status
+  const openVoiceModal = async (item: any, lang: "ta" | "hi" = "ta") => {
+    setVoiceModalItem(item);
+    setSelectedVoiceLang(lang);
+    setVoiceMode("auto");
+    setVoiceStartTime("0");
+    setVoiceEndTime("12");
+    setCustomTranscript("");
+    setExtractedRefVoice(null);
+    setVoiceDubStatus(null);
+    setPreviewVideoUrl(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/items/${item.id}/voice/status?lang=${lang}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setVoiceDubStatus(res.data);
+      if (res.data.reference_voice_url) {
+        setExtractedRefVoice({
+          reference_audio_url: res.data.reference_voice_url,
+          reference_transcript: res.data.reference_transcript,
+          start_time: res.data.ref_start_time,
+          end_time: res.data.ref_end_time,
+          mode: res.data.reference_mode || "auto"
+        });
+        if (res.data.reference_transcript) {
+          setCustomTranscript(res.data.reference_transcript);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load voice status", e);
+    }
+  };
+
+  const handleVoiceLangChange = async (lang: "ta" | "hi") => {
+    setSelectedVoiceLang(lang);
+    setPreviewVideoUrl(null);
+    if (!voiceModalItem) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/items/${voiceModalItem.id}/voice/status?lang=${lang}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setVoiceDubStatus(res.data);
+    } catch (e) {
+      console.error("Failed to switch voice status", e);
+    }
+  };
+
+  const handleExtractReferenceVoice = async () => {
+    if (!voiceModalItem) return;
+    try {
+      setIsExtractingRef(true);
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`${API_BASE_URL}/courses/${courseId}/items/${voiceModalItem.id}/voice/reference`, {
+        mode: voiceMode,
+        start_time: voiceMode === 'manual' ? parseFloat(voiceStartTime) : undefined,
+        end_time: voiceMode === 'manual' ? parseFloat(voiceEndTime) : undefined,
+        custom_transcript: customTranscript.trim() || undefined
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setExtractedRefVoice(res.data);
+      if (res.data.reference_transcript) {
+        setCustomTranscript(res.data.reference_transcript);
+      }
+      triggerToast("Reference voice extracted successfully!", "success");
+    } catch (err: any) {
+      triggerToast(err.response?.data?.detail || "Failed to extract reference voice", "error");
+    } finally {
+      setIsExtractingRef(false);
+    }
+  };
+
+  const handlePreviewVoiceDub = async () => {
+    if (!voiceModalItem) return;
+    try {
+      setIsPreviewingVoiceDub(true);
+      setPreviewVideoUrl(null);
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`${API_BASE_URL}/courses/${courseId}/items/${voiceModalItem.id}/voice/preview`, {
+        reference_voice_path: extractedRefVoice?.reference_audio_path,
+        reference_transcript: customTranscript || extractedRefVoice?.reference_transcript,
+        mode: voiceMode,
+        target_language: selectedVoiceLang,
+        start_time: voiceMode === 'manual' ? parseFloat(voiceStartTime) : undefined,
+        end_time: voiceMode === 'manual' ? parseFloat(voiceEndTime) : undefined
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPreviewVideoUrl(res.data.preview_video_url);
+      triggerToast(`Preview generated successfully! Listen to verify natural ${selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} alignment.`, "success");
+    } catch (err: any) {
+      triggerToast(err.response?.data?.detail || "Failed to generate preview", "error");
+    } finally {
+      setIsPreviewingVoiceDub(false);
+    }
+  };
+
+  const handleGenerateVoiceDub = async () => {
+    if (!voiceModalItem) return;
+    try {
+      setIsGeneratingVoiceDub(true);
+      setVoiceDubStatus({ status: 'GENERATING', progress: 5, target_language: selectedVoiceLang });
+      const token = localStorage.getItem("token");
+      const res = await axios.post(`${API_BASE_URL}/courses/${courseId}/items/${voiceModalItem.id}/voice/generate`, {
+        reference_voice_path: extractedRefVoice?.reference_audio_path,
+        reference_transcript: customTranscript || extractedRefVoice?.reference_transcript,
+        mode: voiceMode,
+        target_language: selectedVoiceLang,
+        start_time: voiceMode === 'manual' ? parseFloat(voiceStartTime) : undefined,
+        end_time: voiceMode === 'manual' ? parseFloat(voiceEndTime) : undefined
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      triggerToast(res.data.message || `AI ${selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} voice synthesis started on GPU!`, "success");
+    } catch (err: any) {
+      setIsGeneratingVoiceDub(false);
+      triggerToast(err.response?.data?.detail || "Failed to trigger voice generation", "error");
+    }
+  };
+
+  // Poll voice dubbing status
+  useEffect(() => {
+    let interval: any = null;
+    if (voiceModalItem && (isGeneratingVoiceDub || voiceDubStatus?.status === 'GENERATING')) {
+      interval = setInterval(async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await axios.get(`${API_BASE_URL}/courses/${courseId}/items/${voiceModalItem.id}/voice/status?lang=${selectedVoiceLang}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setVoiceDubStatus(res.data);
+          if (res.data.status === 'READY') {
+            setIsGeneratingVoiceDub(false);
+            triggerToast(`🎉 ${selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} dubbed video generated successfully!`, "success");
+            fetchLanguages();
+            fetchCourseData();
+          } else if (res.data.status === 'FAILED') {
+            setIsGeneratingVoiceDub(false);
+            triggerToast("Voice dubbing generation failed.", "error");
+          }
+        } catch (e) {}
+      }, 2500);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [isGeneratingVoiceDub, voiceDubStatus?.status, voiceModalItem, selectedVoiceLang, courseId]);
+
   const handleCreateBatch = async () => {
     if (!newBatchName.trim() || !newBatchSection.trim()) return;
     try {
@@ -511,12 +719,67 @@ const CourseBuilder = () => {
     } else {
       setProblems([{ title: "", description: "", difficulty: "Easy", testCases: [{ input: "", output: "" }] }]);
     }
+
+    if (item.type === 'quiz') {
+      const token = localStorage.getItem("token");
+      axios.get(`${API_BASE_URL}/quizzes/content-item/${item.id}?lang=en`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => {
+        if (res.data && res.data.questions && res.data.questions.length > 0) {
+          setQuizType("manual");
+          setQuizQuestions(res.data.questions.map((q: any) => ({
+            id: q.id,
+            question_text: q.question_text,
+            order_index: q.order_index,
+            correct_option_index: typeof q.correct_option_index === 'number' ? q.correct_option_index : 0,
+            options: (q.options || []).map((opt: any) => ({
+              id: opt.id,
+              option_text: opt.option_text,
+              option_index: opt.option_index
+            }))
+          })));
+        } else {
+          setQuizType("external");
+        }
+      }).catch(() => {
+        setQuizType("external");
+      });
+    }
   };
 
   const handleEditSave = async () => {
     if (!editingItem) return;
     try {
       const token = localStorage.getItem("token");
+
+      if (editingItem.type === "quiz" || activeModal === "Quiz") {
+        if (quizType === "manual") {
+          for (let i = 0; i < quizQuestions.length; i++) {
+            const q = quizQuestions[i];
+            if (!q.question_text.trim()) return triggerToast(`Question ${i + 1} is missing question text!`, "error");
+            if (!q.options || q.options.length !== 4) return triggerToast(`Question ${i + 1} must have 4 options!`, "error");
+            for (let j = 0; j < 4; j++) {
+              if (!q.options[j].option_text.trim()) return triggerToast(`Question ${i + 1}, Option ${String.fromCharCode(65 + j)} cannot be empty!`, "error");
+            }
+          }
+
+          const payload = {
+            course_id: courseId,
+            content_item_id: editingItem.id,
+            title: itemTitle,
+            description: itemInstructions,
+            duration_minutes: duration ? parseInt(duration) : 15,
+            is_mandatory: isMandatory,
+            questions: quizQuestions
+          };
+
+          await axios.post(`${API_BASE_URL}/quizzes`, payload, { headers: { Authorization: `Bearer ${token}` } });
+          setEditingItem(null); setActiveModal(null); resetForm(); fetchCourseData();
+          triggerToast("Manual Quiz updated successfully", "success");
+          return;
+        }
+      }
+
       let finalUrl = itemUrl;
 
       if (selectedFile) {
@@ -565,7 +828,7 @@ const CourseBuilder = () => {
       await axios.patch(`${API_BASE_URL}/content/${editingItem.id}`, payload, { headers: { Authorization: `Bearer ${token}` } });
       setEditingItem(null); setActiveModal(null); resetForm(); fetchCourseData();
       triggerToast("Item updated successfully", "success");
-    } catch (err) { triggerToast("Failed to update item.", "error"); }
+    } catch (err: any) { triggerToast(err.response?.data?.detail || "Failed to update item.", "error"); }
   };
 
   const saveContentItem = async () => {
@@ -574,6 +837,39 @@ const CourseBuilder = () => {
 
     const token = localStorage.getItem("token");
     const typeKey = activeModal?.toLowerCase().replace(" ", "_") || "video";
+
+    if (activeModal === "Quiz" || typeKey === "quiz") {
+      if (quizType === "manual") {
+        for (let i = 0; i < quizQuestions.length; i++) {
+          const q = quizQuestions[i];
+          if (!q.question_text.trim()) return triggerToast(`Question ${i + 1} is missing question text!`, "error");
+          if (!q.options || q.options.length !== 4) return triggerToast(`Question ${i + 1} must have 4 options!`, "error");
+          for (let j = 0; j < 4; j++) {
+            if (!q.options[j].option_text.trim()) return triggerToast(`Question ${i + 1}, Option ${String.fromCharCode(65 + j)} cannot be empty!`, "error");
+          }
+        }
+
+        const payload = {
+          course_id: courseId,
+          module_id: selectedModuleId,
+          title: itemTitle,
+          description: itemInstructions,
+          duration_minutes: duration ? parseInt(duration) : 15,
+          is_mandatory: isMandatory,
+          questions: quizQuestions
+        };
+
+        try {
+          await axios.post(`${API_BASE_URL}/quizzes`, payload, { headers: { Authorization: `Bearer ${token}` } });
+          triggerToast("Manual Quiz added successfully!", "success");
+          setActiveModal(null); resetForm(); fetchCourseData();
+          if (!expandedModules.includes(selectedModuleId)) toggleModule(selectedModuleId);
+        } catch (err: any) {
+          triggerToast(err.response?.data?.detail || "Failed to save manual quiz.", "error");
+        }
+        return;
+      }
+    }
 
     let finalUrl = itemUrl;
 
@@ -625,7 +921,7 @@ const CourseBuilder = () => {
       triggerToast(`${activeModal} added successfully!`, "success");
       setActiveModal(null); resetForm(); fetchCourseData();
       if (!expandedModules.includes(selectedModuleId)) toggleModule(selectedModuleId);
-    } catch (err) { triggerToast("Failed to save.", "error"); }
+    } catch (err: any) { triggerToast(err.response?.data?.detail || "Failed to save.", "error"); }
   };
 
   const handleSaveSettings = async () => {
@@ -862,12 +1158,24 @@ const CourseBuilder = () => {
                                                           </div>
                                                         </div>
 
-                                                        {!isFinalized && (
-                                                          <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity justify-end shrink-0">
-                                                            <button onClick={() => handleEditStart(lesson)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"><Edit3 size={18} /></button>
-                                                            <button onClick={() => handleDeleteItem(lesson.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={18} /></button>
-                                                          </div>
-                                                        )}
+                                                        <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity justify-end shrink-0">
+                                                          {(lesson.type?.toLowerCase() === 'video') && (
+                                                            <button
+                                                              onClick={() => openVoiceModal(lesson)}
+                                                              className="px-3 py-1.5 bg-gradient-to-r from-cyan-50 to-blue-50 hover:from-cyan-100 hover:to-blue-100 text-cyan-800 border border-cyan-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-all active:scale-95"
+                                                              title="Configure Professor Reference Voice & AI Tamil Dubbing"
+                                                            >
+                                                              <Mic size={14} className="text-cyan-600" />
+                                                              <span>Voice Studio</span>
+                                                            </button>
+                                                          )}
+                                                          {!isFinalized && (
+                                                            <>
+                                                              <button onClick={() => handleEditStart(lesson)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"><Edit3 size={18} /></button>
+                                                              <button onClick={() => handleDeleteItem(lesson.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={18} /></button>
+                                                            </>
+                                                          )}
+                                                        </div>
                                                       </div>
                                                     )}
                                                   </Draggable>
@@ -1183,25 +1491,65 @@ const CourseBuilder = () => {
                       )}
                     </div>
 
-                    {/* VIDEO SUBTITLES STATUS WIDGET */}
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 mb-6 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 font-bold text-slate-700">
-                        <PlayCircle size={15} className="text-emerald-500" />
-                        <span>Hindi Subtitles</span>
+                    {/* VIDEO SUBTITLES & DUBBED VOICE WIDGETS */}
+                    <div className="space-y-2 mb-6">
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 font-bold text-slate-700">
+                          <PlayCircle size={15} className="text-emerald-500" />
+                          <span>Hindi Subtitles</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                            {videoSummary?.hindi_subtitles_ready || hindiProgressData?.subtitles_ready || 0}/{videoSummary?.total_videos || hindiProgressData?.total_videos || 0}
+                          </span>
+                          <button
+                            onClick={() => handleGenerateSubtitles('hi')}
+                            disabled={isGeneratingHindiSubs}
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all border border-emerald-200 shadow-xs"
+                            title="Generate / Re-sync Hindi Subtitles"
+                          >
+                            <Sparkles size={11} className={isGeneratingHindiSubs ? "animate-spin" : ""} />
+                            {isGeneratingHindiSubs ? "Generating..." : "Generate"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
-                          {videoSummary?.hindi_subtitles_ready || hindiProgressData?.subtitles_ready || 0}/{videoSummary?.total_videos || hindiProgressData?.total_videos || 0}
-                        </span>
-                        <button
-                          onClick={() => handleGenerateSubtitles('hi')}
-                          disabled={isGeneratingHindiSubs}
-                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all border border-emerald-200 shadow-xs"
-                          title="Generate / Re-sync Hindi Subtitles"
-                        >
-                          <Sparkles size={11} className={isGeneratingHindiSubs ? "animate-spin" : ""} />
-                          {isGeneratingHindiSubs ? "Generating..." : "Generate"}
-                        </button>
+
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 font-bold text-slate-700">
+                          <Mic size={15} className="text-emerald-600" />
+                          <span>Natural Hindi Voice (IndicF5)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                            {videoSummary?.hindi_voice_dubbed_ready || 0}/{videoSummary?.total_videos || hindiProgressData?.total_videos || 0}
+                          </span>
+                          <button
+                            onClick={() => {
+                              // Find first video lesson in curriculum to open modal
+                              let firstVid: any = null;
+                              for (const m of modules) {
+                                if (m.lessons) {
+                                  for (const l of m.lessons) {
+                                    if (l.type?.toLowerCase() === 'video') {
+                                      firstVid = l;
+                                      break;
+                                    }
+                                  }
+                                }
+                                if (firstVid) break;
+                              }
+                              if (firstVid) {
+                                openVoiceModal(firstVid, 'hi');
+                              } else {
+                                triggerToast("Add a video lesson in Curriculum tab to configure voice", "error");
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all shadow-xs"
+                            title="Open Hindi Voice Studio"
+                          >
+                            <Mic size={11} /> Voice Studio
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1327,25 +1675,65 @@ const CourseBuilder = () => {
                       )}
                     </div>
 
-                    {/* VIDEO SUBTITLES STATUS WIDGET */}
-                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3.5 mb-6 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 font-bold text-slate-700">
-                        <PlayCircle size={15} className="text-cyan-500" />
-                        <span>Tamil Subtitles</span>
+                    {/* VIDEO SUBTITLES & DUBBED VOICE WIDGETS */}
+                    <div className="space-y-2 mb-6">
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 font-bold text-slate-700">
+                          <PlayCircle size={15} className="text-cyan-500" />
+                          <span>Tamil Subtitles</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                            {videoSummary?.tamil_subtitles_ready || tamilProgressData?.subtitles_ready || 0}/{videoSummary?.total_videos || tamilProgressData?.total_videos || 0}
+                          </span>
+                          <button
+                            onClick={() => handleGenerateSubtitles('ta')}
+                            disabled={isGeneratingTamilSubs}
+                            className="px-2.5 py-1 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all border border-cyan-200 shadow-xs"
+                            title="Generate / Re-sync Tamil Subtitles"
+                          >
+                            <Sparkles size={11} className={isGeneratingTamilSubs ? "animate-spin" : ""} />
+                            {isGeneratingTamilSubs ? "Generating..." : "Generate"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
-                          {videoSummary?.tamil_subtitles_ready || tamilProgressData?.subtitles_ready || 0}/{videoSummary?.total_videos || tamilProgressData?.total_videos || 0}
-                        </span>
-                        <button
-                          onClick={() => handleGenerateSubtitles('ta')}
-                          disabled={isGeneratingTamilSubs}
-                          className="px-2.5 py-1 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all border border-cyan-200 shadow-xs"
-                          title="Generate / Re-sync Tamil Subtitles"
-                        >
-                          <Sparkles size={11} className={isGeneratingTamilSubs ? "animate-spin" : ""} />
-                          {isGeneratingTamilSubs ? "Generating..." : "Generate"}
-                        </button>
+
+                      <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 font-bold text-slate-700">
+                          <Mic size={15} className="text-cyan-600" />
+                          <span>Natural Tamil Voice (IndicF5)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                            {videoSummary?.tamil_voice_dubbed_ready || 0}/{videoSummary?.total_videos || tamilProgressData?.total_videos || 0}
+                          </span>
+                          <button
+                            onClick={() => {
+                              // Find first video lesson in curriculum to open modal
+                              let firstVid: any = null;
+                              for (const m of modules) {
+                                if (m.lessons) {
+                                  for (const l of m.lessons) {
+                                    if (l.type?.toLowerCase() === 'video') {
+                                      firstVid = l;
+                                      break;
+                                    }
+                                  }
+                                }
+                                if (firstVid) break;
+                              }
+                              if (firstVid) {
+                                openVoiceModal(firstVid);
+                              } else {
+                                triggerToast("Add a video lesson in Curriculum tab to configure voice", "error");
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all shadow-xs"
+                            title="Open Tamil Voice Studio"
+                          >
+                            <Mic size={11} /> Voice Studio
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1804,6 +2192,35 @@ const CourseBuilder = () => {
                   />
                 </div>
 
+                {activeModal === "Quiz" && (
+                  <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1 mb-6">
+                    <button
+                      type="button"
+                      onClick={() => setQuizType("manual")}
+                      className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 ${
+                        quizType === "manual"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      <HelpCircle size={16} className="text-emerald-500" />
+                      <span>Manual Quiz Builder</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuizType("external")}
+                      className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 ${
+                        quizType === "external"
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      <ExternalLink size={16} className="text-blue-500" />
+                      <span>External Quiz (Google Form / Link)</span>
+                    </button>
+                  </div>
+                )}
+
                 {(activeModal === "Code Test" || activeModal === "Code") ? (
                   <div className="space-y-6 border-t border-slate-200 pt-6">
                     <div className="flex items-center justify-between">
@@ -1938,6 +2355,139 @@ const CourseBuilder = () => {
                       </div>
                     ))}
                   </div>
+                ) : (activeModal === "Quiz" && quizType === "manual") ? (
+                  <div className="space-y-6 border-t border-slate-200 pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-extrabold text-slate-800 text-base">Questions ({quizQuestions.length})</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">4 options per question. Select the correct answer radio button.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuizQuestions([
+                            ...quizQuestions,
+                            {
+                              question_text: "",
+                              order_index: quizQuestions.length + 1,
+                              correct_option_index: 0,
+                              options: [
+                                { option_text: "", option_index: 0 },
+                                { option_text: "", option_index: 1 },
+                                { option_text: "", option_index: 2 },
+                                { option_text: "", option_index: 3 },
+                              ]
+                            }
+                          ]);
+                        }}
+                        className="px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-black hover:bg-emerald-100 transition-colors flex items-center gap-1.5 shadow-2xs"
+                      >
+                        <Plus size={15} /> Add Question
+                      </button>
+                    </div>
+
+                    <div className="space-y-6">
+                      {quizQuestions.map((q, qIdx) => (
+                        <div key={qIdx} className="p-6 bg-slate-50/80 border border-slate-200 rounded-3xl space-y-4 relative shadow-xs">
+                          <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                            <span className="font-black text-sm text-slate-800 flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center font-black">
+                                {qIdx + 1}
+                              </span>
+                              Question {qIdx + 1}
+                            </span>
+                            
+                            <div className="flex items-center gap-2">
+                              {quizQuestions.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setQuizQuestions(quizQuestions.filter((_, idx) => idx !== qIdx));
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                  title="Delete question"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1.5">Question Text <span className="text-red-500">*</span></label>
+                            <textarea
+                              value={q.question_text}
+                              onChange={(e) => {
+                                const updated = [...quizQuestions];
+                                updated[qIdx].question_text = e.target.value;
+                                setQuizQuestions(updated);
+                              }}
+                              rows={2}
+                              placeholder="e.g. What is the difference between an abstract class and an interface in Java?"
+                              className="w-full p-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all resize-y"
+                            />
+                          </div>
+
+                          {/* 4 Options */}
+                          <div className="space-y-2.5 pt-1">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Options (Click radio button on the left to set Correct Answer)
+                            </label>
+                            
+                            {q.options.map((opt, optIdx) => {
+                              const isCorrect = q.correct_option_index === optIdx;
+                              const optLetter = String.fromCharCode(65 + optIdx);
+
+                              return (
+                                <div
+                                  key={optIdx}
+                                  className={`flex items-center gap-3 p-2.5 pr-3.5 rounded-2xl border transition-all ${
+                                    isCorrect 
+                                      ? "bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/20" 
+                                      : "bg-white border-slate-200 hover:border-slate-300"
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...quizQuestions];
+                                      updated[qIdx].correct_option_index = optIdx;
+                                      setQuizQuestions(updated);
+                                    }}
+                                    className={`w-7 h-7 rounded-xl flex items-center justify-center font-black text-xs transition-all shrink-0 ${
+                                      isCorrect
+                                        ? "bg-emerald-600 text-white shadow-sm"
+                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                    }`}
+                                    title={isCorrect ? "Correct Answer" : "Click to mark as Correct Answer"}
+                                  >
+                                    {optLetter}
+                                  </button>
+
+                                  <input
+                                    value={opt.option_text}
+                                    onChange={(e) => {
+                                      const updated = [...quizQuestions];
+                                      updated[qIdx].options[optIdx].option_text = e.target.value;
+                                      setQuizQuestions(updated);
+                                    }}
+                                    placeholder={`Option ${optLetter} text...`}
+                                    className="flex-1 bg-transparent border-0 outline-none text-sm font-medium text-slate-800 placeholder:text-slate-400"
+                                  />
+
+                                  {isCorrect && (
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full shrink-0">
+                                      Correct
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     <label className="block text-sm font-bold text-slate-700">Video / PDF / Resource Content</label>
@@ -2065,6 +2615,328 @@ const CourseBuilder = () => {
                   className="flex-1 py-4 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-lg shadow-blue-600/20"
                 >
                   {editingItem ? "Save Changes" : `Add ${activeModal}`}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 🎙️ TAMIL VOICE DUBBING STUDIO MODAL (AI4Bharat IndicF5) */}
+      <AnimatePresence>
+        {voiceModalItem && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="bg-white rounded-[2.5rem] p-6 sm:p-8 max-w-2xl w-full shadow-2xl border border-slate-100 relative my-8"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-6 border-b border-slate-100">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white flex items-center justify-center shadow-md shadow-cyan-500/20">
+                    <Mic size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      Tamil Voice Studio
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+                        AI4Bharat IndicF5
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium truncate max-w-md mt-0.5">
+                      Lesson: "{voiceModalItem.title}"
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setVoiceModalItem(null)}
+                  className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="py-6 space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+
+                {/* Section 1: Professor Reference Voice */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-3xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-slate-900 font-black text-sm">
+                      <Volume2 size={16} className="text-cyan-600" />
+                      <span>1. Professor Reference Voice (English)</span>
+                    </div>
+                    <span className="text-[11px] font-bold text-slate-500">8–15s voice clone sample</span>
+                  </div>
+
+                  <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                    Select continuous clean speech from the instructor's original English lecture. IndicF5 uses this reference to clone the instructor's exact vocal timbre, pitch, and pacing into modern spoken Tamil.
+                  </p>
+
+                  {/* Mode Selector */}
+                  <div className="grid grid-cols-2 gap-2 bg-slate-200/60 p-1 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => setVoiceMode("auto")}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                        voiceMode === "auto" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      ✨ Auto-Detect Best Sample
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVoiceMode("manual")}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                        voiceMode === "manual" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      ⏱️ Manual Timestamps
+                    </button>
+                  </div>
+
+                  {/* Manual Inputs */}
+                  {voiceMode === "manual" && (
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Start Time (seconds)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={voiceStartTime}
+                          onChange={(e) => setVoiceStartTime(e.target.value)}
+                          className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-bold outline-none focus:border-cyan-500"
+                          placeholder="e.g. 0"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">End Time (seconds)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          value={voiceEndTime}
+                          onChange={(e) => setVoiceEndTime(e.target.value)}
+                          className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-bold outline-none focus:border-cyan-500"
+                          placeholder="e.g. 12"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Extract Button */}
+                  <button
+                    type="button"
+                    onClick={handleExtractReferenceVoice}
+                    disabled={isExtractingRef}
+                    className="w-full py-2.5 bg-white hover:bg-cyan-50 border border-cyan-200 text-cyan-800 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-xs active:scale-98 disabled:opacity-50"
+                  >
+                    <Sparkles size={14} className={isExtractingRef ? "animate-spin text-cyan-600" : "text-cyan-600"} />
+                    {isExtractingRef ? "Extracting 24kHz Reference Audio..." : "Extract & Preview Reference Voice"}
+                  </button>
+
+                  {/* Extracted Preview Player */}
+                  {extractedRefVoice && extractedRefVoice.reference_audio_url && (
+                    <div className="bg-white border border-cyan-100 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-cyan-900 flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="text-emerald-500" />
+                          Reference Audio Isolated
+                        </span>
+                        <span className="text-[10px] font-black text-slate-400">
+                          {extractedRefVoice.duration ? `${extractedRefVoice.duration.toFixed(1)}s sample` : "24kHz Mono"}
+                        </span>
+                      </div>
+
+                      <audio
+                        controls
+                        src={resolveMediaUrl(extractedRefVoice.reference_audio_url)}
+                        className="w-full h-9 rounded-xl outline-none"
+                      />
+
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                          English Reference Transcript (Matches Audio)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={customTranscript}
+                          onChange={(e) => setCustomTranscript(e.target.value)}
+                          placeholder="Reference speech transcript in English..."
+                          className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-cyan-500 font-medium text-slate-800 resize-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 2: Neural Speech Synthesis & Synchronization */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-3xl p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-slate-900 font-black text-sm">
+                      <Sparkles size={16} className="text-blue-600" />
+                      <span>2. Neural Voice Dubbing & Alignment Engine</span>
+                    </div>
+
+                    {/* Language Switcher Tabs */}
+                    <div className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => handleVoiceLangChange("ta")}
+                        className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                          selectedVoiceLang === "ta"
+                            ? "bg-white text-blue-900 shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        தமிழ் (Tamil)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleVoiceLangChange("hi")}
+                        className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                          selectedVoiceLang === "hi"
+                            ? "bg-white text-orange-900 shadow-xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        हिन्दी (Hindi)
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                    Converts {selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} subtitles into natural classroom lecture speech (preserving tech keywords like <code className="bg-slate-200 text-slate-800 px-1 py-0.5 rounded text-[11px]">class</code>, <code className="bg-slate-200 text-slate-800 px-1 py-0.5 rounded text-[11px]">function</code>, <code className="bg-slate-200 text-slate-800 px-1 py-0.5 rounded text-[11px]">prompt</code>, <code className="bg-slate-200 text-slate-800 px-1 py-0.5 rounded text-[11px]">workflow</code>) and synchronizes audio timing with original video.
+                  </p>
+
+                  {/* Status Indicator / Progress */}
+                  {voiceDubStatus?.status === 'GENERATING' || isGeneratingVoiceDub ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-2">
+                      <div className="flex justify-between items-center text-xs font-black text-blue-900">
+                        <span className="flex items-center gap-2">
+                          <RotateCw size={13} className="animate-spin text-blue-600" />
+                          Synthesizing & Synchronizing {selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Voice...
+                        </span>
+                        <span className="text-blue-600">{voiceDubStatus?.progress || 10}%</span>
+                      </div>
+                      <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.max(voiceDubStatus?.progress || 10, 10)}%` }}
+                          transition={{ duration: 0.5 }}
+                          className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full"
+                        />
+                      </div>
+                      <p className="text-[10px] text-blue-700 font-medium truncate">
+                        Synthesizing pure {selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} speech with intelligent audio alignment & zero-cut timeline synchronization...
+                      </p>
+                    </div>
+                  ) : previewVideoUrl ? (
+                    <div className="bg-purple-50/70 border border-purple-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-black text-purple-900 flex items-center gap-1.5">
+                          <CheckCircle2 size={15} className="text-purple-600" />
+                          30s Aligned {selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Voice Preview Ready
+                        </span>
+                        <span className="text-[10px] font-bold text-purple-700 bg-white px-2 py-0.5 rounded-md border border-purple-200">
+                          Zero-Cut Verified
+                        </span>
+                      </div>
+
+                      {/* Video Player Preview */}
+                      <video
+                        controls
+                        src={resolveMediaUrl(previewVideoUrl)}
+                        className="w-full h-44 rounded-xl bg-black object-contain shadow-xs"
+                      />
+
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-[11px] font-medium text-purple-800 truncate max-w-[280px]">
+                          Preview: {previewVideoUrl}
+                        </span>
+                        <span className="text-[11px] text-purple-600 font-bold">
+                          Natural Spoken Alignment Active
+                        </span>
+                      </div>
+                    </div>
+                  ) : voiceDubStatus?.status === 'READY' && voiceDubStatus?.dubbed_video_url ? (
+                    <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-black text-emerald-900 flex items-center gap-1.5">
+                          <CheckCircle2 size={15} className="text-emerald-600" />
+                          {selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Dubbed Video Ready (Fully Aligned)
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
+                          Stream Active
+                        </span>
+                      </div>
+
+                      {/* Video Player Preview */}
+                      <video
+                        controls
+                        src={resolveMediaUrl(voiceDubStatus.dubbed_video_url)}
+                        className="w-full h-44 rounded-xl bg-black object-contain shadow-xs"
+                      />
+
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-[11px] font-medium text-emerald-800 truncate max-w-[280px]">
+                          Dubbed Video: {voiceDubStatus.dubbed_video_url}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/course/${courseId}/player?lang=${selectedVoiceLang}`)}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                        >
+                          <ExternalLink size={12} /> Student View
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-100/70 border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between text-xs font-bold text-slate-600">
+                      <span>{selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Dubbing Status</span>
+                      <span className="text-slate-400 font-medium">Ready to Synthesize</span>
+                    </div>
+                  )}
+
+                  {/* Action Buttons: Preview & Full Generate */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handlePreviewVoiceDub}
+                      disabled={isPreviewingVoiceDub || isGeneratingVoiceDub || voiceDubStatus?.status === 'GENERATING'}
+                      className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 disabled:opacity-50"
+                    >
+                      <Sparkles size={14} className={isPreviewingVoiceDub ? "animate-spin text-purple-400" : "text-purple-400"} />
+                      {isPreviewingVoiceDub ? "Synthesizing Preview..." : `Preview ${selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Voice (30s)`}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateVoiceDub}
+                      disabled={isPreviewingVoiceDub || isGeneratingVoiceDub || voiceDubStatus?.status === 'GENERATING'}
+                      className="w-full py-3.5 bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-700 hover:to-indigo-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-500/20 active:scale-98 disabled:opacity-50"
+                    >
+                      <Sparkles size={14} className={isGeneratingVoiceDub ? "animate-spin" : ""} />
+                      {voiceDubStatus?.status === 'READY'
+                        ? `Re-Generate Full ${selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Video`
+                        : `Generate Full ${selectedVoiceLang === "hi" ? "Hindi" : "Tamil"} Video`}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Footer */}
+              <div className="pt-4 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setVoiceModalItem(null)}
+                  className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+                >
+                  Close Studio
                 </button>
               </div>
             </motion.div>

@@ -42,6 +42,19 @@ HINDI_SUBTITLES_DIR.mkdir(parents=True, exist_ok=True)
 TAMIL_SUBTITLES_DIR = SUBTITLES_DIR / "ta"
 TAMIL_SUBTITLES_DIR.mkdir(parents=True, exist_ok=True)
 
+# Reference voice & Dubbed media directories
+REF_VOICES_DIR = BACKEND_UPLOADS_DIR / "ref_voices"
+REF_VOICES_DIR.mkdir(parents=True, exist_ok=True)
+
+DUBBED_DIR = BACKEND_UPLOADS_DIR / "dubbed"
+DUBBED_DIR.mkdir(parents=True, exist_ok=True)
+
+TAMIL_DUBBED_DIR = DUBBED_DIR / "ta"
+TAMIL_DUBBED_DIR.mkdir(parents=True, exist_ok=True)
+
+HINDI_DUBBED_DIR = DUBBED_DIR / "hi"
+HINDI_DUBBED_DIR.mkdir(parents=True, exist_ok=True)
+
 # Service Configuration
 HOST = os.getenv("LANGUAGE_SERVICE_HOST", "0.0.0.0")
 PORT = int(os.getenv("LANGUAGE_SERVICE_PORT", "8001"))

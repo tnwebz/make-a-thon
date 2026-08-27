@@ -12,6 +12,13 @@ import {
 } from "lucide-react";
 import { usePwaInstall } from "./usePwaInstall";
 import { InstallAppModal } from "./components/InstallAppModal";
+import { ManualQuizPlayer } from "./components/ManualQuizPlayer";
+
+interface SubtitleCue {
+  start: number;
+  end: number;
+  text: string;
+}
 
 interface OfflineLesson {
   id: string | number;
@@ -23,6 +30,8 @@ interface OfflineLesson {
   mimeType?: string;
   duration?: number | null;
   order: number;
+  subtitles?: { lang: string; label: string; blobUrl: string; vttText: string }[];
+  quiz_data?: any;
 }
 
 interface OfflineModule {
@@ -59,6 +68,56 @@ async function getOfflineDB(): Promise<IDBPDatabase> {
   });
 }
 
+const parseWebVTT = (vttText: string): SubtitleCue[] => {
+  const cues: SubtitleCue[] = [];
+  const lines = vttText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  let currentStart: number | null = null;
+  let currentEnd: number | null = null;
+  let currentTextLines: string[] = [];
+
+  const timeToSeconds = (timeStr: string): number => {
+    const clean = timeStr.trim().replace(',', '.');
+    const parts = clean.split(':');
+    if (parts.length === 3) {
+      const [h, m, s] = parts;
+      return parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s);
+    } else if (parts.length === 2) {
+      const [m, s] = parts;
+      return parseFloat(m) * 60 + parseFloat(s);
+    }
+    return parseFloat(clean) || 0;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.includes('-->')) {
+      const parts = line.split('-->');
+      if (parts.length === 2) {
+        currentStart = timeToSeconds(parts[0]);
+        currentEnd = timeToSeconds(parts[1].trim().split(' ')[0]);
+        currentTextLines = [];
+      }
+    } else if (currentStart !== null && currentEnd !== null) {
+      if (line === '') {
+        if (currentTextLines.length > 0) {
+          cues.push({ start: currentStart, end: currentEnd, text: currentTextLines.join(' ') });
+          currentStart = null;
+          currentEnd = null;
+          currentTextLines = [];
+        }
+      } else if (!/^\d+$/.test(line) && !line.startsWith('NOTE') && !line.startsWith('WEBVTT')) {
+        currentTextLines.push(line);
+      }
+    }
+  }
+
+  if (currentStart !== null && currentEnd !== null && currentTextLines.length > 0) {
+    cues.push({ start: currentStart, end: currentEnd, text: currentTextLines.join(' ') });
+  }
+
+  return cues;
+};
+
 const OfflineCoursePlayer: React.FC = () => {
   const navigate = useNavigate();
 
@@ -67,6 +126,11 @@ const OfflineCoursePlayer: React.FC = () => {
   const [activeCourse, setActiveCourse] = useState<OfflineCourse | null>(null);
   const [activeLesson, setActiveLesson] = useState<OfflineLesson | null>(null);
   const [loadingDB, setLoadingDB] = useState(true);
+
+  // Subtitles state
+  const [currentSubtitleText, setCurrentSubtitleText] = useState<string>("");
+  const [parsedCues, setParsedCues] = useState<SubtitleCue[]>([]);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Unpacking & drag-drop states
   const [isDragging, setIsDragging] = useState(false);
@@ -86,7 +150,45 @@ const OfflineCoursePlayer: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  // Resize listener for mobile responsiveness
+  useEffect(() => {
+    setCurrentSubtitleText("");
+    if (activeLesson?.subtitles && activeLesson.subtitles.length > 0) {
+      const activeSub = activeLesson.subtitles[0];
+      if (activeSub.vttText) {
+        const cues = parseWebVTT(activeSub.vttText);
+        setParsedCues(cues);
+      } else {
+        setParsedCues([]);
+      }
+    } else {
+      setParsedCues([]);
+    }
+  }, [activeLesson]);
+
+  // 🖥️ Dynamic Fullscreen Subtitle Mode Switcher for Offline Player
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const video = videoRef.current;
+      if (!video || !video.textTracks || video.textTracks.length === 0) return;
+      const isVideoFullscreen = document.fullscreenElement === video;
+      for (let i = 0; i < video.textTracks.length; i++) {
+        video.textTracks[i].mode = isVideoFullscreen ? 'showing' : 'hidden';
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Handle file selection from local PCmobile responsiveness
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 1024;
@@ -288,6 +390,27 @@ const OfflineCoursePlayer: React.FC = () => {
               }
             }
 
+            // Unpack any included WebVTT subtitles
+            const unpackedSubtitles: { lang: string; label: string; blobUrl: string; vttText: string }[] = [];
+            if (l.subtitles && Array.isArray(l.subtitles)) {
+              for (const subItem of l.subtitles) {
+                if (subItem.filePath) {
+                  const subZipEntry = findZipEntry(subItem.filePath);
+                  if (subZipEntry) {
+                    const vttText = await subZipEntry.async("text");
+                    const vttBlob = new Blob([vttText], { type: "text/vtt; charset=utf-8" });
+                    const subBlobUrl = URL.createObjectURL(vttBlob);
+                    unpackedSubtitles.push({
+                      lang: subItem.lang || "ta",
+                      label: subItem.label || (subItem.lang === "ta" ? "தமிழ்" : "हिन्दी"),
+                      blobUrl: subBlobUrl,
+                      vttText
+                    });
+                  }
+                }
+              }
+            }
+
             lessons.push({
               id: l.id || `lesson-${Date.now()}-${Math.random()}`,
               title: l.title || "Lesson",
@@ -297,7 +420,9 @@ const OfflineCoursePlayer: React.FC = () => {
               textContent: l.textContent || null,
               mimeType,
               duration: l.duration || null,
-              order: l.order || 1
+              order: l.order || 1,
+              subtitles: unpackedSubtitles,
+              quiz_data: l.quiz_data || null
             });
 
             processedLessons++;
@@ -318,7 +443,7 @@ const OfflineCoursePlayer: React.FC = () => {
           title: manifest.title || file.name.replace(/\.zip$/i, ""),
           description: manifest.description || "Offline course package",
           importedAt: new Date().toISOString(),
-          language: manifest.language || (file.name.toLowerCase().includes("hindi") ? "hi" : "en"),
+          language: manifest.language || (file.name.toLowerCase().includes("tamil") ? "ta" : (file.name.toLowerCase().includes("hindi") ? "hi" : "en")),
           modules
         };
       } else {
@@ -547,9 +672,30 @@ const OfflineCoursePlayer: React.FC = () => {
           {/* 2. VIDEO PLAYER */}
           {activeLesson.type === "video" && (
             <div className="w-full flex flex-col items-center justify-center h-full max-w-5xl">
-              <div className="w-full aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative flex items-center justify-center">
+              <div className="w-full aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative flex items-center justify-center group">
+                
+                {/* Offline Subtitle Badge */}
+                {activeLesson.subtitles && activeLesson.subtitles.length > 0 && (
+                  <div className="absolute top-4 left-4 z-40 flex items-center gap-2 px-3 py-1.5 bg-black/70 backdrop-blur rounded-xl border border-white/10 text-white shadow-lg pointer-events-none">
+                    <Sparkles size={14} className="text-emerald-400 animate-pulse" />
+                    <span className="text-[11px] font-bold">
+                      {activeLesson.subtitles[0].label} Subtitles (Offline)
+                    </span>
+                  </div>
+                )}
+
+                {/* Synchronized Floating Subtitle Overlay */}
+                {currentSubtitleText && (
+                  <div className="absolute bottom-12 left-0 right-0 z-30 flex justify-center pointer-events-none px-6 select-none transition-all duration-150">
+                    <div className="bg-slate-950/90 backdrop-blur-xl text-white text-xs sm:text-sm md:text-base font-bold px-5 py-2 rounded-2xl border border-white/20 shadow-2xl max-w-[85%] text-center leading-relaxed font-sans">
+                      {currentSubtitleText}
+                    </div>
+                  </div>
+                )}
+
                 {activeLesson.blobUrl ? (
                   <video
+                    ref={videoRef}
                     key={String(activeLesson.id)}
                     controls
                     autoPlay
@@ -557,7 +703,32 @@ const OfflineCoursePlayer: React.FC = () => {
                     controlsList="nodownload"
                     className="w-full h-full object-contain bg-black"
                     src={activeLesson.blobUrl}
+                    onTimeUpdate={(e) => {
+                      const ct = (e.target as HTMLVideoElement).currentTime;
+                      if (parsedCues.length > 0) {
+                        const cue = parsedCues.find(c => ct >= c.start && ct <= c.end);
+                        setCurrentSubtitleText(cue ? cue.text : "");
+                      }
+                    }}
+                    onLoadedData={(e) => {
+                      const video = e.currentTarget;
+                      if (video.textTracks) {
+                        for (let i = 0; i < video.textTracks.length; i++) {
+                          video.textTracks[i].mode = 'hidden';
+                        }
+                      }
+                    }}
                   >
+                    {activeLesson.subtitles?.map(s => (
+                      <track
+                        key={s.lang}
+                        kind="subtitles"
+                        label={s.label}
+                        srcLang={s.lang}
+                        src={s.blobUrl}
+                        default
+                      />
+                    ))}
                     Your browser does not support offline video playback.
                   </video>
                 ) : (
@@ -569,8 +740,8 @@ const OfflineCoursePlayer: React.FC = () => {
             </div>
           )}
 
-          {/* 3. CODE TEST / QUIZ */}
-          {(activeLesson.type === "code_test" || activeLesson.type === "quiz") && (
+          {/* 3. CODE TEST */}
+          {activeLesson.type === "code_test" && (
             <div className="w-full h-full max-w-5xl rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl border border-slate-200/60 bg-white p-5 sm:p-8">
               <div className="flex items-center gap-2 text-indigo-600 text-xs font-black uppercase tracking-wider mb-3">
                 <Code size={16} />
@@ -580,6 +751,30 @@ const OfflineCoursePlayer: React.FC = () => {
               <div className="p-4 sm:p-6 bg-slate-50 border border-slate-200 rounded-2xl font-mono text-xs sm:text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                 {activeLesson.textContent || "Complete this offline lesson as instructed."}
               </div>
+            </div>
+          )}
+
+          {/* 4. MANUAL QUIZ */}
+          {activeLesson.type === "quiz" && (
+            <div className="w-full h-full max-w-5xl rounded-2xl sm:rounded-3xl overflow-y-auto shadow-xl border border-slate-200/60 bg-white/70 backdrop-blur-xl mx-auto p-4 sm:p-6">
+              {activeLesson.quiz_data ? (
+                <ManualQuizPlayer
+                  quiz={activeLesson.quiz_data}
+                  language={activeCourse?.language || 'en'}
+                  isOffline={true}
+                  onCompleted={(res) => {
+                    if (res.passed && !completedLessonIds.includes(String(activeLesson.id))) {
+                      handleMarkComplete();
+                    }
+                  }}
+                />
+              ) : (
+                <div className="w-full bg-white rounded-2xl p-6 sm:p-8 text-center border border-slate-200">
+                  <HelpCircle size={40} className="text-purple-500 mx-auto mb-3" />
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-2">{activeLesson.title}</h3>
+                  <p className="text-slate-500 text-xs sm:text-sm max-w-md mx-auto">{activeLesson.textContent || "Complete this offline quiz as instructed."}</p>
+                </div>
+              )}
             </div>
           )}
 

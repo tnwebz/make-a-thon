@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { InstallAppModal } from "./components/InstallAppModal";
 import { PdfViewer } from "./components/PdfViewer";
+import { ManualQuizPlayer } from "./components/ManualQuizPlayer";
 
 interface LessonItem {
   id: number;
@@ -26,6 +27,9 @@ interface LessonItem {
   is_mandatory: boolean;
   order: number;
   instructions: string | null;
+  dubbed_video_url?: string | null;
+  voice_audio_url?: string | null;
+  quiz_data?: any;
 }
 
 interface ModuleItem {
@@ -285,7 +289,9 @@ const SharedCourseViewer: React.FC = () => {
     }
 
     const isDone = completedLessons.includes(activeLesson.id);
-    const mediaStreamUrl = activeLesson.contentUrl ? `${resolveMediaUrl(activeLesson.contentUrl)}?token=${token}` : null;
+    const isDubbed = currentLang !== 'en' && !!activeLesson.dubbed_video_url;
+    const effectiveVideoUrl = isDubbed ? activeLesson.dubbed_video_url : activeLesson.contentUrl;
+    const mediaStreamUrl = effectiveVideoUrl ? `${resolveMediaUrl(effectiveVideoUrl)}?token=${token}` : null;
 
     return (
       <div className="flex flex-col h-full bg-transparent w-full relative">
@@ -328,6 +334,17 @@ const SharedCourseViewer: React.FC = () => {
             <div className="w-full flex flex-col items-center justify-center h-full max-w-5xl">
               <div className="w-full aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-slate-200/50 bg-black relative group flex items-center justify-center">
                 
+                {/* Voice Active Badge */}
+                {isDubbed && (
+                  <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-30 flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/90 backdrop-blur-md rounded-xl border border-cyan-400/40 text-white shadow-xl pointer-events-none">
+                    <Sparkles size={13} className="text-cyan-400 animate-pulse" />
+                    <span className="text-[10px] sm:text-xs font-bold flex items-center gap-1">
+                      <span>🎙️ {currentLang === 'hi' ? 'Natural Hindi Voice' : 'Natural Tamil Voice'}</span>
+                      <span className="bg-cyan-500/30 text-cyan-200 text-[8px] px-1 py-0.2 rounded font-black uppercase border border-cyan-400/30">Active</span>
+                    </span>
+                  </div>
+                )}
+
                 {/* Mode & Download Overlay Button */}
                 {course?.accessMode === "ALLOW_DOWNLOAD" && (
                   <button
@@ -344,7 +361,7 @@ const SharedCourseViewer: React.FC = () => {
                 {mediaStreamUrl ? (
                   /* Offline Local Video Stream */
                   <video
-                    key={activeLesson.id}
+                    key={`${activeLesson.id}-${currentLang}-${isTamilDubbed}`}
                     controls
                     autoPlay
                     playsInline
@@ -401,8 +418,14 @@ const SharedCourseViewer: React.FC = () => {
 
           {/* 4. QUIZ */}
           {activeLesson.type === "quiz" && (
-            <div className="w-full h-full max-w-6xl rounded-2xl sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
-              {activeLesson.rawUrl ? (
+            <div className="w-full h-full max-w-5xl rounded-2xl sm:rounded-[2rem] overflow-y-auto shadow-xl border border-slate-200/60 bg-white/70 backdrop-blur-xl mx-auto p-4 sm:p-6">
+              {activeLesson.quiz_data ? (
+                <ManualQuizPlayer
+                  quiz={activeLesson.quiz_data}
+                  language={currentLang}
+                  isOffline={true}
+                />
+              ) : activeLesson.rawUrl ? (
                 <iframe
                   src={getEmbedUrl(activeLesson.rawUrl)}
                   title={activeLesson.title}

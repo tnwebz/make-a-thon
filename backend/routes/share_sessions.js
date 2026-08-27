@@ -6,7 +6,23 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { ZipArchive } = require('archiver');
-const { Course, Module, ContentItem, CourseVersion, ContentItemTranslation, ShareSession, User, Enrollment } = require('../models');
+const { 
+    Course, 
+    Module, 
+    ContentItem, 
+    CourseVersion, 
+    ContentItemTranslation, 
+    VideoSubtitle, 
+    VideoDubbedAsset,
+    Quiz,
+    QuizQuestion,
+    QuizOption,
+    QuizQuestionTranslation,
+    QuizOptionTranslation,
+    ShareSession, 
+    User, 
+    Enrollment 
+} = require('../models');
 const { authMiddleware } = require('../middleware/auth');
 const { shareAuthMiddleware } = require('../middleware/share_auth');
 
@@ -694,28 +710,117 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
         const availableLanguages = [
             { code: 'en', name: 'English', nativeName: 'English', ready: true }
         ];
-        if (readyLangMap['hi']) {
-            availableLanguages.push({ code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', ready: true });
-        }
-        if (readyLangMap['ta']) {
-            availableLanguages.push({ code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', ready: true });
+        // Collect item IDs and fetch ready subtitles & dubbed assets
+        const itemIds = [];
+        if (course.Modules) {
+            course.Modules.forEach(m => {
+                if (m.items) m.items.forEach(i => itemIds.push(i.id));
+            });
         }
 
-        const isRequestedReady = requestedLang !== 'en' && readyLangMap[requestedLang];
+        const allSubtitles = await VideoSubtitle.findAll({
+            where: { content_item_id: itemIds, status: 'READY' }
+        });
+        const subtitleMap = {};
+        allSubtitles.forEach(s => {
+            if (!subtitleMap[s.content_item_id]) subtitleMap[s.content_item_id] = {};
+            subtitleMap[s.content_item_id][s.language_code] = s;
+        });
+
+        const allDubbed = await VideoDubbedAsset.findAll({
+            where: { content_item_id: itemIds, status: 'READY' }
+        });
+        const dubbedMap = {};
+        allDubbed.forEach(d => {
+            if (!dubbedMap[d.content_item_id]) dubbedMap[d.content_item_id] = {};
+            dubbedMap[d.content_item_id][d.language_code] = d;
+        });
+
+        if (readyLangMap['hi'] || allSubtitles.some(s => s.language_code === 'hi')) {
+            if (!availableLanguages.some(l => l.code === 'hi')) {
+                availableLanguages.push({ code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', ready: true });
+            }
+        }
+        if (readyLangMap['ta'] || allSubtitles.some(s => s.language_code === 'ta') || allDubbed.some(d => d.language_code === 'ta')) {
+            if (!availableLanguages.some(l => l.code === 'ta')) {
+                availableLanguages.push({ code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', ready: true });
+            }
+        }
+
+        const isRequestedReady = requestedLang !== 'en' && (readyLangMap[requestedLang] || allSubtitles.some(s => s.language_code === requestedLang) || allDubbed.some(d => d.language_code === requestedLang));
         let translationMap = {};
         let activeTitle = course.title;
         let activeDescription = course.description;
 
         if (isRequestedReady) {
             const currentVer = readyLangMap[requestedLang];
-            if (currentVer.title) activeTitle = currentVer.title;
-            if (currentVer.description) activeDescription = currentVer.description;
+            if (currentVer && currentVer.title) activeTitle = currentVer.title;
+            if (currentVer && currentVer.description) activeDescription = currentVer.description;
 
             const translations = await ContentItemTranslation.findAll({
                 where: { language_code: requestedLang, status: 'READY' }
             });
             translations.forEach(t => translationMap[t.content_item_id] = t);
         }
+
+        // Fetch all Quizzes for items in this course
+        const allQuizzes = await Quiz.findAll({
+            where: { content_item_id: itemIds },
+            include: [{
+                model: QuizQuestion,
+                as: 'questions',
+                include: [
+                    { model: QuizOption, as: 'options' },
+                    { model: QuizQuestionTranslation, as: 'translations' }
+                ]
+            }]
+        });
+
+        const quizMap = {};
+        let optionTransMap = {};
+        if (requestedLang !== 'en' && allQuizzes.length > 0) {
+            const allOptIds = [];
+            allQuizzes.forEach(qz => qz.questions?.forEach(q => q.options?.forEach(opt => allOptIds.push(opt.id))));
+            if (allOptIds.length > 0) {
+                const optTranslations = await QuizOptionTranslation.findAll({
+                    where: { option_id: allOptIds, language_code: requestedLang }
+                });
+                optTranslations.forEach(ot => {
+                    optionTransMap[ot.option_id] = ot.translated_text;
+                });
+            }
+        }
+
+        allQuizzes.forEach(qz => {
+            const structuredQuestions = (qz.questions || []).sort((a, b) => a.order_index - b.order_index).map(q => {
+                const qTrans = (q.translations || []).find(t => t.language_code === requestedLang);
+                const sortedOptions = (q.options || []).sort((a, b) => a.option_index - b.option_index).map(opt => ({
+                    id: opt.id,
+                    option_index: opt.option_index,
+                    option_text: opt.option_text,
+                    translated_option_text: optionTransMap[opt.id] || null
+                }));
+                return {
+                    id: q.id,
+                    order_index: q.order_index,
+                    question_text: q.question_text,
+                    translated_question_text: qTrans ? qTrans.translated_text : null,
+                    options: sortedOptions,
+                    correct_option_index: q.correct_option_index
+                };
+            });
+
+            quizMap[qz.content_item_id] = {
+                id: qz.id,
+                title: qz.title,
+                description: qz.description,
+                quiz_type: qz.quiz_type,
+                duration_minutes: qz.duration_minutes,
+                is_mandatory: qz.is_mandatory,
+                total_questions: structuredQuestions.length,
+                questions: structuredQuestions
+            };
+        });
 
         const responseData = {
             id: course.id,
@@ -767,12 +872,49 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
                                 else if (ext === '.pdf') detectedMime = 'application/pdf';
                             }
 
+                            // Subtitles
+                            const itemSubs = subtitleMap[i.id] || {};
+                            let activeSubUrl = null;
+                            let activeTransUrl = null;
+                            if (requestedLang !== 'en' && itemSubs[requestedLang]) {
+                                activeSubUrl = itemSubs[requestedLang].vtt_path;
+                                activeTransUrl = itemSubs[requestedLang].transcript_path;
+                            }
+
+                            const availableTracks = [];
+                            if (itemSubs['hi']) {
+                                availableTracks.push({
+                                    lang: 'hi',
+                                    label: 'हिन्दी',
+                                    src: itemSubs['hi'].vtt_path,
+                                    segments: itemSubs['hi'].segment_count
+                                });
+                            }
+                            if (itemSubs['ta']) {
+                                availableTracks.push({
+                                    lang: 'ta',
+                                    label: 'தமிழ்',
+                                    src: itemSubs['ta'].vtt_path,
+                                    segments: itemSubs['ta'].segment_count
+                                });
+                            }
+
+                            // Dubbed Video Assets
+                            const itemDubbed = dubbedMap[i.id] || {};
+                            let activeDubbedVideoUrl = null;
+                            let activeVoiceAudioUrl = null;
+
+                            if (requestedLang !== 'en' && itemDubbed[requestedLang]) {
+                                activeDubbedVideoUrl = itemDubbed[requestedLang].dubbed_video_path;
+                                activeVoiceAudioUrl = itemDubbed[requestedLang].voice_audio_path;
+                            }
+
                             return {
                                 id: i.id,
                                 title: lessonTitle,
                                 type: i.type,
                                 contentUrl: (isBase64 || isDiskFile)
-                                    ? `/share-sessions/${req.share.shareCode}/course/content/${i.id}${requestedLang === 'hi' && isHindiReady ? '?lang=hi' : ''}`
+                                    ? `/share-sessions/${req.share.shareCode}/course/content/${i.id}${isRequestedReady ? '?lang=' + requestedLang : ''}`
                                     : null,
                                 youtubeUrl: isYouTube ? itemContent : null,
                                 rawUrl: (!isBase64 && !isDiskFile && !isYouTube && typeof itemContent === 'string' && itemContent.startsWith('http')) ? itemContent : null,
@@ -783,7 +925,13 @@ router.get('/:shareCode/course', shareAuthMiddleware, async (req, res) => {
                                 is_mandatory: i.is_mandatory,
                                 order: i.order,
                                 instructions: i.instructions,
-                                is_translated: isTranslated
+                                is_translated: isTranslated,
+                                subtitle_url: activeSubUrl,
+                                transcript_url: activeTransUrl,
+                                subtitles: availableTracks,
+                                dubbed_video_url: activeDubbedVideoUrl,
+                                voice_audio_url: activeVoiceAudioUrl,
+                                quiz_data: quizMap[i.id] || null
                             };
                         }) : []
                 })) : []
@@ -978,6 +1126,15 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
         });
         archive.pipe(res);
 
+        const allSubtitles = await VideoSubtitle.findAll({
+            where: { status: 'READY' }
+        });
+        const subtitleMap = {};
+        allSubtitles.forEach(s => {
+            if (!subtitleMap[s.content_item_id]) subtitleMap[s.content_item_id] = {};
+            subtitleMap[s.content_item_id][s.language_code] = s;
+        });
+
         const modules = course.Modules
             ? course.Modules.sort((a, b) => (a.order || 0) - (b.order || 0))
             : [];
@@ -1078,6 +1235,64 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
             }
         });
 
+        const allQuizzes = await Quiz.findAll({
+            where: { course_id: course.id },
+            include: [{
+                model: QuizQuestion,
+                as: 'questions',
+                include: [
+                    { model: QuizOption, as: 'options' },
+                    { model: QuizQuestionTranslation, as: 'translations' }
+                ]
+            }]
+        });
+
+        const quizMap = {};
+        let optionTransMap = {};
+        if (isRequestedReady && allQuizzes.length > 0) {
+            const allOptIds = [];
+            allQuizzes.forEach(qz => qz.questions?.forEach(q => q.options?.forEach(opt => allOptIds.push(opt.id))));
+            if (allOptIds.length > 0) {
+                const optTranslations = await QuizOptionTranslation.findAll({
+                    where: { option_id: allOptIds, language_code: requestedLang }
+                });
+                optTranslations.forEach(ot => {
+                    optionTransMap[ot.option_id] = ot.translated_text;
+                });
+            }
+        }
+
+        allQuizzes.forEach(qz => {
+            const structuredQuestions = (qz.questions || []).sort((a, b) => a.order_index - b.order_index).map(q => {
+                const qTrans = (q.translations || []).find(t => t.language_code === requestedLang);
+                const sortedOptions = (q.options || []).sort((a, b) => a.option_index - b.option_index).map(opt => ({
+                    id: opt.id,
+                    option_index: opt.option_index,
+                    option_text: opt.option_text,
+                    translated_option_text: optionTransMap[opt.id] || null
+                }));
+                return {
+                    id: q.id,
+                    order_index: q.order_index,
+                    question_text: q.question_text,
+                    translated_question_text: qTrans ? qTrans.translated_text : null,
+                    options: sortedOptions,
+                    correct_option_index: q.correct_option_index
+                };
+            });
+
+            quizMap[qz.content_item_id] = {
+                id: qz.id,
+                title: qz.title,
+                description: qz.description,
+                quiz_type: qz.quiz_type,
+                duration_minutes: qz.duration_minutes,
+                is_mandatory: qz.is_mandatory,
+                total_questions: structuredQuestions.length,
+                questions: structuredQuestions
+            };
+        });
+
         const manifest = {
             title: activeTitle,
             original_title: course.title,
@@ -1110,9 +1325,15 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
                 let contentVal = lesson.content;
                 let lessonTitle = lesson.title;
 
-                if (requestedLang === 'hi' && isHindiReady && translationMap[lesson.id]) {
+                if (isRequestedReady && translationMap[lesson.id]) {
                     contentVal = translationMap[lesson.id].content;
                     if (translationMap[lesson.id].title) lessonTitle = translationMap[lesson.id].title;
+                }
+
+                // If requesting Tamil version and Tamil dubbed video is ready, bundle Tamil dubbed video
+                const itemDubbed = dubbedMap[lesson.id] || {};
+                if (requestedLang === 'ta' && itemDubbed['ta'] && itemDubbed['ta'].dubbed_video_path) {
+                    contentVal = itemDubbed['ta'].dubbed_video_path;
                 }
 
                 const lessonName = sanitizeFilename(lessonTitle);
@@ -1152,6 +1373,27 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
                     });
                 }
 
+                // Attach any existing subtitles to the ZIP package
+                const itemSubs = subtitleMap[lesson.id] || {};
+                const subsEntries = [];
+                for (const subLang of ['hi', 'ta']) {
+                    if (itemSubs[subLang] && itemSubs[subLang].vtt_path) {
+                        const subRel = itemSubs[subLang].vtt_path.startsWith('/') ? itemSubs[subLang].vtt_path.substring(1) : itemSubs[subLang].vtt_path;
+                        const subFullPath = path.join(__dirname, '..', subRel);
+                        if (fs.existsSync(subFullPath)) {
+                            const subZipPath = `${moduleFolderName}/${lessonPrefix} - ${lessonName}_${subLang}.vtt`;
+                            archive.file(subFullPath, {
+                                name: `${courseName}/${subZipPath}`
+                            });
+                            subsEntries.push({
+                                lang: subLang,
+                                label: subLang === 'hi' ? 'हिन्दी' : 'தமிழ்',
+                                filePath: subZipPath
+                            });
+                        }
+                    }
+                }
+
                 manifestModule.lessons.push({
                     id: lesson.id,
                     title: lessonTitle,
@@ -1162,7 +1404,9 @@ router.get('/:shareCode/download/course', shareAuthMiddleware, async (req, res) 
                     instructions: lesson.instructions,
                     filePath: lessonFilePath,
                     textContent: (!lessonFilePath || lessonFilePath.endsWith('.txt')) ? contentVal : null,
-                    is_translated: requestedLang === 'hi' && isHindiReady && !!translationMap[lesson.id]
+                    is_translated: isRequestedReady && !!translationMap[lesson.id],
+                    subtitles: subsEntries,
+                    quiz_data: quizMap[lesson.id] || null
                 });
             }
 

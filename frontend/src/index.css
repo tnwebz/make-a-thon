@@ -27,3 +27,35 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #64748b; 
 }
+
+/* 🎬 SKILLFORGE MULTILINGUAL SUBTITLE ENGINE - DYNAMIC CUE STYLING */
+/* In native video fullscreen, render clean, properly sized, elegant subtitles */
+video:fullscreen::cue,
+video:-webkit-full-screen::cue,
+video:-moz-full-screen::cue,
+video:-ms-fullscreen::cue,
+::cue {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  background-color: rgba(2, 6, 23, 0.88) !important;
+  color: #ffffff !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+  font-size: clamp(14px, 1.6vw, 19px) !important;
+  line-height: 1.4 !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85) !important;
+}
+
+/* Hide native HTML5 track in non-fullscreen view to prevent duplicate overlapping with custom UI */
+video:not(:fullscreen)::cue,
+video:not(:-webkit-full-screen)::cue,
+video:not(:-moz-full-screen)::cue,
+video:not(:-ms-fullscreen)::cue {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  font-size: 0 !important;
+  background-color: transparent !important;
+  color: transparent !important;
+}

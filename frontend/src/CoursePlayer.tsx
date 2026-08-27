@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { API_BASE_URL, resolveMediaUrl } from "./config";
+import { ManualQuizPlayer } from "./components/ManualQuizPlayer";
 
 
 // --- 💻 COMPONENT: PROFESSIONAL CODE ARENA ---
@@ -351,6 +352,31 @@ const CoursePlayer = () => {
     return () => clearInterval(interval);
   }, [subtitleCues, currentLang]);
 
+  // 🖥️ Dynamic Fullscreen Subtitle Mode Switcher
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const video = videoContainerRef.current?.querySelector('video');
+      if (!video || !video.textTracks || video.textTracks.length === 0) return;
+      const isVideoFullscreen = document.fullscreenElement === video;
+      for (let i = 0; i < video.textTracks.length; i++) {
+        // In native video fullscreen, enable browser track (styled by CSS video:fullscreen::cue)
+        // In normal view, hide native track (so only our custom glassmorphic overlay renders)
+        video.textTracks[i].mode = isVideoFullscreen ? 'showing' : 'hidden';
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
 
 
   useEffect(() => {
@@ -400,14 +426,40 @@ const CoursePlayer = () => {
 
   useEffect(() => {
     if (activeLesson) {
-        setContentLoading(true);
-        // Auto-resolve non-iframe content load for smooth transition
-        if (activeLesson.type !== 'note' && activeLesson.type !== 'quiz') {
-            const timer = setTimeout(() => setContentLoading(false), 1200);
-            return () => clearTimeout(timer);
+      if (activeLesson.type === 'quiz') {
+        if (activeLesson.quiz_data) {
+          setContentLoading(false);
+        } else if (!activeLesson.content) {
+          // Fallback: Fetch manual quiz directly if not attached to player payload
+          const token = localStorage.getItem("token");
+          axios.get(`${API_BASE_URL}/quizzes/content-item/${activeLesson.id}?lang=${currentLang}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          }).then(res => {
+            if (res.data && res.data.questions && res.data.questions.length > 0) {
+              setActiveLesson((prev: any) => (prev ? { ...prev, quiz_data: res.data } : prev));
+            }
+            setContentLoading(false);
+          }).catch(() => {
+            setContentLoading(false);
+          });
+        } else {
+          setContentLoading(true);
+          const timer = setTimeout(() => setContentLoading(false), 2000);
+          return () => clearTimeout(timer);
         }
+      } else if (activeLesson.type === 'note') {
+        if (activeLesson.content) {
+          setContentLoading(true);
+          const timer = setTimeout(() => setContentLoading(false), 2000);
+          return () => clearTimeout(timer);
+        } else {
+          setContentLoading(false);
+        }
+      } else {
+        setContentLoading(false);
+      }
     }
-  }, [activeLesson]);
+  }, [activeLesson?.id, activeLesson?.type, currentLang]);
 
   const toggleModule = (moduleId: number) => setExpandedModules(prev => prev.includes(moduleId) ? prev.filter(id => id !== moduleId) : [...prev, moduleId]);
 
@@ -549,15 +601,36 @@ const CoursePlayer = () => {
           )}
 
           {activeLesson.type === "quiz" && (
-            <div className="w-full h-full max-w-6xl rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 bg-white/50 backdrop-blur-xl mx-auto p-2">
-              {activeLesson.content ? (
+            <div className="w-full h-full max-w-5xl rounded-[2rem] overflow-y-auto shadow-xl border border-slate-200/60 bg-white/70 backdrop-blur-xl mx-auto p-4 sm:p-6">
+              {activeLesson.quiz_data ? (
+                <ManualQuizPlayer
+                  quiz={activeLesson.quiz_data}
+                  language={currentLang}
+                  onSubmitOnline={async (answers) => {
+                    const token = localStorage.getItem("token");
+                    const res = await axios.post(
+                      `${API_BASE_URL}/quizzes/${activeLesson.quiz_data.id}/submit`,
+                      { answers, language_code: currentLang },
+                      { headers: { Authorization: `Bearer ${token}` } }
+                    );
+                    return res.data;
+                  }}
+                  onCompleted={(res) => {
+                    if (res.passed && !completedLessons.includes(activeLesson.id)) {
+                      handleMarkComplete();
+                    }
+                  }}
+                />
+              ) : activeLesson.content ? (
                 <iframe 
                   src={getEmbedUrl(activeLesson.content)} 
-                  className="w-full h-full rounded-[1.5rem] border-0 bg-white" 
+                  className="w-full h-[75vh] rounded-[1.5rem] border-0 bg-white" 
                   onLoad={() => setContentLoading(false)}
                 />
               ) : (
-                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem]">No quiz uploaded</div>
+                <div className="flex items-center justify-center h-full text-slate-400 font-bold uppercase tracking-widest bg-white rounded-[1.5rem] py-20">
+                  No quiz uploaded
+                </div>
               )}
             </div>
           )}
@@ -589,8 +662,16 @@ const CoursePlayer = () => {
                   </button>
                 )}
 
-                {/* Subtitles & Captions Badge */}
-                {(activeLesson.subtitle_url || (activeLesson.subtitles && activeLesson.subtitles.length > 0) || blobTrackUrl) && (
+                {/* Subtitles & Dubbed Voice Badge */}
+                {currentLang === 'ta' && activeLesson.dubbed_video_url ? (
+                  <div className="absolute top-4 left-4 z-50 flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-cyan-950/90 to-blue-950/90 backdrop-blur-md rounded-xl border border-cyan-400/40 text-white shadow-xl pointer-events-none">
+                    <Sparkles size={14} className="text-cyan-400 animate-pulse" />
+                    <span className="text-[11px] font-bold tracking-wide flex items-center gap-1.5">
+                      <span>🎙️ AI4Bharat Natural Tamil Voice</span>
+                      <span className="bg-cyan-500/30 text-cyan-200 text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase tracking-wider border border-cyan-400/30">Active</span>
+                    </span>
+                  </div>
+                ) : (activeLesson.subtitle_url || (activeLesson.subtitles && activeLesson.subtitles.length > 0) || blobTrackUrl) ? (
                   <div className="absolute top-4 left-4 z-50 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 text-white shadow-lg pointer-events-none">
                     <Sparkles size={14} className="text-emerald-400 animate-pulse" />
                     <span className="text-[11px] font-bold tracking-wide flex items-center gap-1.5">
@@ -598,7 +679,7 @@ const CoursePlayer = () => {
                       <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-md font-black uppercase">Active</span>
                     </span>
                   </div>
-                )}
+                ) : null}
 
                 {/* 🎯 ULTRA-RESPONSIVE DYNAMIC FLOATING SUBTITLE OVERLAY */}
                 {currentSubtitleText && currentLang !== 'en' && (
@@ -622,18 +703,30 @@ const CoursePlayer = () => {
                   activeLesson.content.startsWith("data:") || 
                   activeLesson.content.endsWith(".mp4") || 
                   activeLesson.content.endsWith(".webm") || 
-                  activeLesson.content.endsWith(".ogg")
+                  activeLesson.content.endsWith(".ogg") ||
+                  activeLesson.dubbed_video_url
                 ) ? (
                   <video
-                    key={`${activeLesson.id}`}
-                    src={activeLesson.content.startsWith("data:") 
-                      ? `${API_BASE_URL}/content/media/${activeLesson.id}` 
-                      : resolveMediaUrl(activeLesson.content)}
+                    key={`${activeLesson.id}-${currentLang}-${!!activeLesson.dubbed_video_url}`}
+                    src={currentLang !== 'en' && activeLesson.dubbed_video_url
+                      ? resolveMediaUrl(activeLesson.dubbed_video_url)
+                      : (activeLesson.content.startsWith("data:") 
+                          ? `${API_BASE_URL}/content/media/${activeLesson.id}` 
+                          : resolveMediaUrl(activeLesson.content))}
                     controls
                     autoPlay
                     playsInline
                     crossOrigin="anonymous"
                     className="w-full h-full object-contain bg-black rounded-[1.5rem]"
+                    onLoadedData={(e) => {
+                      const video = e.currentTarget;
+                      if (video.textTracks) {
+                        const isVideoFullscreen = document.fullscreenElement === video;
+                        for (let i = 0; i < video.textTracks.length; i++) {
+                          video.textTracks[i].mode = isVideoFullscreen ? 'showing' : 'hidden';
+                        }
+                      }
+                    }}
                   >
                     {blobTrackUrl && (
                       <track
@@ -807,7 +900,7 @@ const CoursePlayer = () => {
                     : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <span>{l.code === 'hi' ? '🇮🇳' : '🇬🇧'}</span>
+                <span>{l.code === 'hi' || l.code === 'ta' ? '🇮🇳' : '🇬🇧'}</span>
                 <span>{l.nativeName}</span>
               </button>
             ))}

@@ -3,8 +3,27 @@ const router = express.Router();
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
-const { Course, Module, ContentItem, CourseVersion, ContentItemTranslation, VideoSubtitle, Enrollment, LessonProgress, SchoolClass, CourseBatch, User } = require('../models');
+const { 
+    Course, 
+    Module, 
+    ContentItem, 
+    CourseVersion, 
+    ContentItemTranslation, 
+    VideoSubtitle, 
+    VideoDubbedAsset,
+    Quiz,
+    QuizQuestion,
+    QuizOption,
+    QuizQuestionTranslation,
+    QuizOptionTranslation,
+    Enrollment, 
+    LessonProgress, 
+    SchoolClass, 
+    CourseBatch, 
+    User 
+} = require('../models');
 const { authMiddleware, getPasswordHash } = require('../middleware/auth');
+const { translateQuizToLanguage } = require('./quizzes');
 
 const LANGUAGE_SERVICE_URL = process.env.LANGUAGE_SERVICE_URL || 'http://127.0.0.1:8001';
 
@@ -61,12 +80,18 @@ router.get('/:course_id/languages', authMiddleware, async (req, res) => {
             course.Modules.forEach(m => m.items && m.items.forEach(i => allCourseItemIds.push(i.id)));
         }
 
-        // Subtitles count
+        // Subtitles and Dubbed video count
         const readySubtitles = await VideoSubtitle.findAll({
             where: { content_item_id: activeVideoIds, status: 'READY' }
         });
         const hindiSubsCount = readySubtitles.filter(s => s.language_code === 'hi').length;
         const tamilSubsCount = readySubtitles.filter(s => s.language_code === 'ta').length;
+
+        const readyDubbed = await VideoDubbedAsset.findAll({
+            where: { content_item_id: activeVideoIds, status: 'READY' }
+        });
+        const hindiDubbedCount = readyDubbed.filter(d => d.language_code === 'hi').length;
+        const tamilDubbedCount = readyDubbed.filter(d => d.language_code === 'ta').length;
 
         // Process each target language
         const targetLangs = ['hi', 'ta'];
@@ -169,7 +194,8 @@ router.get('/:course_id/languages', authMiddleware, async (req, res) => {
                 is_original: true,
                 progress: 100,
                 total_videos: totalVideos,
-                subtitles_ready: totalVideos
+                subtitles_ready: totalVideos,
+                voice_dubbed_ready: totalVideos
             },
             {
                 language_code: 'hi',
@@ -185,7 +211,8 @@ router.get('/:course_id/languages', authMiddleware, async (req, res) => {
                 error_message: langData['hi'].error_message,
                 updated_at: langData['hi'].updated_at,
                 total_videos: totalVideos,
-                subtitles_ready: hindiSubsCount
+                subtitles_ready: hindiSubsCount,
+                voice_dubbed_ready: hindiDubbedCount
             },
             {
                 language_code: 'ta',
@@ -201,7 +228,8 @@ router.get('/:course_id/languages', authMiddleware, async (req, res) => {
                 error_message: langData['ta'].error_message,
                 updated_at: langData['ta'].updated_at,
                 total_videos: totalVideos,
-                subtitles_ready: tamilSubsCount
+                subtitles_ready: tamilSubsCount,
+                voice_dubbed_ready: tamilDubbedCount
             }
         ];
 
@@ -211,7 +239,9 @@ router.get('/:course_id/languages', authMiddleware, async (req, res) => {
             video_summary: {
                 total_videos: totalVideos,
                 hindi_subtitles_ready: hindiSubsCount,
-                tamil_subtitles_ready: tamilSubsCount
+                tamil_subtitles_ready: tamilSubsCount,
+                hindi_voice_dubbed_ready: hindiDubbedCount,
+                tamil_voice_dubbed_ready: tamilDubbedCount
             }
         });
     } catch (error) {
@@ -331,8 +361,20 @@ async function triggerLanguageGeneration(req, res, targetLang) {
             });
         }
 
+        // 3. Dispatch Manual Quiz translation if any
+        const courseQuizzes = await Quiz.findAll({
+            where: { course_id: course.id, quiz_type: 'manual' }
+        });
+        if (courseQuizzes.length > 0) {
+            for (const q of courseQuizzes) {
+                translateQuizToLanguage(q.id, targetLang).catch(err => {
+                    console.warn(`[Auto Quiz Translation] Course ${course.id} Quiz ${q.id} error:`, err.message);
+                });
+            }
+        }
+
         // If no assets to translate, mark READY immediately
-        if (totalTasks === 0) {
+        if (totalTasks === 0 && courseQuizzes.length === 0) {
             version.status = 'READY';
             version.progress = 100;
             await version.save();
@@ -340,12 +382,13 @@ async function triggerLanguageGeneration(req, res, targetLang) {
 
         res.json({
             message: `${targetLang.toUpperCase()} translation job started successfully`,
-            status: totalTasks === 0 ? "READY" : "GENERATING",
+            status: (totalTasks === 0 && courseQuizzes.length === 0) ? "READY" : "GENERATING",
             course_id: course.id,
             language_code: targetLang,
             total_files: totalTasks,
             pdf_count: pdfAssets.length,
-            video_count: videoAssets.length
+            video_count: videoAssets.length,
+            quiz_count: courseQuizzes.length
         });
 
     } catch (error) {
@@ -626,6 +669,312 @@ router.post('/:course_id/subtitles/:lang/progress', async (req, res) => {
     }
 });
 
+// ============================================
+// 🎙️ NATURAL TAMIL VOICE DUBBING ENDPOINTS
+// ============================================
+
+/**
+ * POST /api/v1/courses/:course_id/items/:item_id/voice/reference
+ * Extract or preview instructor reference voice (auto or manual timestamp selection)
+ */
+router.post('/:course_id/items/:item_id/voice/reference', authMiddleware, async (req, res) => {
+    try {
+        const { item_id } = req.params;
+        const { mode = 'auto', start_time, end_time, custom_transcript } = req.body;
+
+        const item = await ContentItem.findOne({ where: { id: item_id } });
+        if (!item) return res.status(404).json({ detail: "Lesson item not found" });
+
+        if (item.type !== 'video') {
+            return res.status(400).json({ detail: "Reference voice can only be extracted from video lessons" });
+        }
+
+        // Locate video file on disk
+        let videoRelative = item.content.startsWith('/') ? item.content.slice(1) : item.content;
+        let videoDiskPath = path.resolve(__dirname, '..', videoRelative);
+
+        if (!fs.existsSync(videoDiskPath)) {
+            return res.status(404).json({ detail: `Video file not found at path: ${item.content}` });
+        }
+
+        // Fetch subtitle transcript if available to provide English segments
+        let englishSegments = [];
+        const stem = path.basename(videoDiskPath, path.extname(videoDiskPath));
+        const engJsonPath = path.resolve(__dirname, '..', 'uploads', 'media', 'subtitles', `${stem}.json`);
+        if (fs.existsSync(engJsonPath)) {
+            try {
+                const raw = JSON.parse(fs.readFileSync(engJsonPath, 'utf8'));
+                englishSegments = raw.segments || [];
+            } catch (e) {
+                console.warn("Could not read English subtitle JSON:", e);
+            }
+        }
+
+        // Call language service
+        const response = await axios.post(`${LANGUAGE_SERVICE_URL}/api/voice/reference`, {
+            source_media_path: videoDiskPath,
+            mode,
+            start_time: start_time ? parseFloat(start_time) : undefined,
+            end_time: end_time ? parseFloat(end_time) : undefined,
+            custom_transcript,
+            english_segments: englishSegments.length > 0 ? englishSegments : undefined
+        });
+
+        // Save reference voice metadata to DB asset
+        const [asset] = await VideoDubbedAsset.findOrCreate({
+            where: { content_item_id: item.id, language_code: 'ta' },
+            defaults: {
+                course_id: item.course_id,
+                status: 'NOT_GENERATED',
+                reference_mode: mode
+            }
+        });
+
+        if (response.data && response.data.reference_audio_path) {
+            asset.reference_voice_path = response.data.reference_audio_path;
+            asset.reference_transcript = response.data.reference_transcript;
+            asset.reference_mode = mode;
+            asset.ref_start_time = response.data.start_time;
+            asset.ref_end_time = response.data.end_time;
+            await asset.save();
+        }
+
+        res.json({
+            ok: true,
+            ...response.data
+        });
+    } catch (error) {
+        console.error("Extract reference voice error:", error?.response?.data || error.message);
+        res.status(500).json({ detail: error?.response?.data?.detail || "Failed to extract reference voice" });
+    }
+});
+
+/**
+ * POST /api/v1/courses/:course_id/items/:item_id/voice/generate
+ * Trigger AI4Bharat IndicF5 speech generation and Tamil video dubbing
+ */
+router.post('/:course_id/items/:item_id/voice/generate', authMiddleware, async (req, res) => {
+    try {
+        const { course_id, item_id } = req.params;
+        const { reference_voice_path, reference_transcript, mode = 'auto', start_time, end_time } = req.body;
+
+        const item = await ContentItem.findOne({ where: { id: item_id } });
+        if (!item) return res.status(404).json({ detail: "Lesson item not found" });
+
+        let videoRelative = item.content.startsWith('/') ? item.content.slice(1) : item.content;
+        let videoDiskPath = path.resolve(__dirname, '..', videoRelative);
+
+        if (!fs.existsSync(videoDiskPath)) {
+            return res.status(404).json({ detail: `Video file not found at path: ${item.content}` });
+        }
+
+        // Check for existing reference voice or auto-extract
+        let refPath = reference_voice_path;
+        let refText = reference_transcript;
+
+        const stem = path.basename(videoDiskPath, path.extname(videoDiskPath));
+        const defaultRefWav = path.resolve(__dirname, '..', 'uploads', 'media', 'ref_voices', `${stem}_ref.wav`);
+        const defaultRefJson = path.resolve(__dirname, '..', 'uploads', 'media', 'ref_voices', `${stem}_ref.json`);
+
+        if (!refPath && fs.existsSync(defaultRefWav)) {
+            refPath = defaultRefWav;
+            if (fs.existsSync(defaultRefJson)) {
+                try {
+                    const rData = JSON.parse(fs.readFileSync(defaultRefJson, 'utf8'));
+                    refText = rData.reference_transcript || refText;
+                } catch (e) {}
+            }
+        }
+
+        if (!refPath || !fs.existsSync(refPath)) {
+            // Auto extract reference voice first
+            let englishSegments = [];
+            const engJsonPath = path.resolve(__dirname, '..', 'uploads', 'media', 'subtitles', `${stem}.json`);
+            if (fs.existsSync(engJsonPath)) {
+                try {
+                    const raw = JSON.parse(fs.readFileSync(engJsonPath, 'utf8'));
+                    englishSegments = raw.segments || [];
+                } catch (e) {}
+            }
+
+            const refResp = await axios.post(`${LANGUAGE_SERVICE_URL}/api/voice/reference`, {
+                source_media_path: videoDiskPath,
+                mode: mode || 'auto',
+                start_time: start_time ? parseFloat(start_time) : undefined,
+                end_time: end_time ? parseFloat(end_time) : undefined,
+                english_segments: englishSegments.length > 0 ? englishSegments : undefined
+            });
+            refPath = refResp.data.reference_audio_path;
+            refText = refResp.data.reference_transcript;
+        }
+
+        // Update database record to GENERATING
+        const [asset] = await VideoDubbedAsset.findOrCreate({
+            where: { content_item_id: item.id, language_code: target_language },
+            defaults: {
+                course_id: parseInt(course_id),
+                status: 'GENERATING',
+                progress: 5,
+                reference_voice_path: refPath,
+                reference_transcript: refText,
+                reference_mode: mode
+            }
+        });
+
+        asset.status = 'GENERATING';
+        asset.progress = 5;
+        asset.reference_voice_path = refPath;
+        asset.reference_transcript = refText;
+        asset.reference_mode = mode;
+        if (start_time) asset.ref_start_time = parseFloat(start_time);
+        if (end_time) asset.ref_end_time = parseFloat(end_time);
+        await asset.save();
+
+        const callbackUrl = `http://localhost:8000/api/v1/courses/${course_id}/items/${item_id}/voice/webhook`;
+
+        // Dispatch background generation to Python service
+        const genResp = await axios.post(`${LANGUAGE_SERVICE_URL}/api/voice/generate`, {
+            source_video_path: videoDiskPath,
+            target_language: target_language,
+            reference_voice_path: refPath,
+            reference_transcript: refText || "Computer science lecture presentation",
+            course_id: parseInt(course_id),
+            content_item_id: item.id,
+            callback_url: callbackUrl
+        });
+
+        res.json({
+            ok: true,
+            message: `${target_language.toUpperCase()} voice dubbing generation started`,
+            job_id: genResp.data?.job_id,
+            target_language: target_language,
+            status: "GENERATING",
+            content_item_id: item.id
+        });
+
+    } catch (error) {
+        console.error("Trigger voice dubbing error:", error?.response?.data || error.message);
+        res.status(500).json({ detail: error?.response?.data?.detail || "Failed to start voice dubbing" });
+    }
+});
+
+/**
+ * POST /api/v1/courses/:course_id/items/:item_id/voice/preview
+ * Generate a 20-30s preview of the natural Hindi/Tamil voice video
+ */
+router.post('/:course_id/items/:item_id/voice/preview', authMiddleware, async (req, res) => {
+    try {
+        const { course_id, item_id } = req.params;
+        const { mode = 'auto', start_time, end_time, reference_voice_path, reference_transcript, target_language = 'ta' } = req.body;
+
+        const item = await ContentItem.findOne({ where: { id: item_id } });
+        if (!item || item.type !== 'video') {
+            return res.status(404).json({ detail: "Video content item not found." });
+        }
+
+        let videoDiskPath = resolveDiskMedia(item.content);
+        if (!fs.existsSync(videoDiskPath)) {
+            return res.status(404).json({ detail: "Physical source video file not found." });
+        }
+
+        const stem = path.basename(videoDiskPath, path.extname(videoDiskPath));
+        const defaultRefWav = path.resolve(__dirname, '..', 'uploads', 'media', 'ref_voices', `${stem}_ref.wav`);
+        let refPath = reference_voice_path || (fs.existsSync(defaultRefWav) ? defaultRefWav : null);
+        let refText = reference_transcript || "Computer science lecture presentation";
+
+        const prevResp = await axios.post(`${LANGUAGE_SERVICE_URL}/api/voice/preview`, {
+            source_video_path: videoDiskPath,
+            target_language: target_language,
+            reference_voice_path: refPath,
+            reference_transcript: refText,
+            course_id: parseInt(course_id),
+            content_item_id: item.id
+        });
+
+        res.json(prevResp.data);
+    } catch (error) {
+        console.error("Voice dubbing preview error:", error?.response?.data || error.message);
+        res.status(500).json({ detail: error?.response?.data?.detail || "Failed to generate voice preview" });
+    }
+});
+
+/**
+ * POST /api/v1/courses/:course_id/items/:item_id/voice/webhook
+ * Webhook callback from Python Voice Dubbing pipeline
+ */
+router.post('/:course_id/items/:item_id/voice/webhook', async (req, res) => {
+    try {
+        const { course_id, item_id } = req.params;
+        const { dubbed_video_url, voice_audio_url, status = 'COMPLETED', error, target_language = 'ta' } = req.body;
+
+        const asset = await VideoDubbedAsset.findOne({
+            where: { content_item_id: item_id, language_code: target_language }
+        });
+
+        if (asset) {
+            if (status === 'COMPLETED' || dubbed_video_url) {
+                asset.status = 'READY';
+                asset.progress = 100;
+                asset.dubbed_video_path = dubbed_video_url;
+                asset.voice_audio_path = voice_audio_url;
+                asset.error_message = null;
+            } else {
+                asset.status = 'FAILED';
+                asset.error_message = error || 'Generation failed';
+            }
+            await asset.save();
+        }
+
+        console.log(`🎙️ [${target_language.toUpperCase()} Voice Webhook] Lesson ${item_id}: ${asset ? asset.status : 'Not found'} -> ${dubbed_video_url}`);
+        res.json({ ok: true });
+    } catch (error) {
+        console.error("Voice dubbing webhook error:", error);
+        res.status(500).json({ detail: "Internal Server Error" });
+    }
+});
+
+/**
+ * GET /api/v1/courses/:course_id/items/:item_id/voice/status
+ * Check current dubbed voice status and progress for a video item
+ */
+router.get('/:course_id/items/:item_id/voice/status', authMiddleware, async (req, res) => {
+    try {
+        const { item_id } = req.params;
+        const lang = req.query.lang || req.query.language || req.query.target_language || 'ta';
+        const asset = await VideoDubbedAsset.findOne({
+            where: { content_item_id: item_id, language_code: lang }
+        });
+
+        if (!asset) {
+            return res.json({
+                status: 'NOT_GENERATED',
+                progress: 0,
+                target_language: lang,
+                dubbed_video_url: null,
+                voice_audio_url: null,
+                reference_voice_url: null
+            });
+        }
+
+        res.json({
+            status: asset.status,
+            progress: asset.progress,
+            target_language: asset.language_code || lang,
+            dubbed_video_url: asset.dubbed_video_path,
+            voice_audio_url: asset.voice_audio_path,
+            reference_voice_url: asset.reference_voice_path ? `/uploads/media/ref_voices/${path.basename(asset.reference_voice_path)}` : null,
+            reference_transcript: asset.reference_transcript,
+            reference_mode: asset.reference_mode,
+            ref_start_time: asset.ref_start_time,
+            ref_end_time: asset.ref_end_time,
+            error_message: asset.error_message
+        });
+    } catch (error) {
+        console.error("Fetch voice status error:", error);
+        res.status(500).json({ detail: "Failed to fetch voice dubbing status." });
+    }
+});
+
 router.get('/:course_id/player', authMiddleware, async (req, res) => {
     try {
         const requestedLang = req.query.lang || 'en';
@@ -660,6 +1009,16 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
             subtitleMap[s.content_item_id][s.language_code] = s;
         });
 
+        // Fetch all ready VideoDubbedAssets for items in this course
+        const allDubbed = await VideoDubbedAsset.findAll({
+            where: { content_item_id: itemIds, status: 'READY' }
+        });
+        const dubbedMap = {}; // { itemId: { ta: asset } }
+        allDubbed.forEach(d => {
+            if (!dubbedMap[d.content_item_id]) dubbedMap[d.content_item_id] = {};
+            dubbedMap[d.content_item_id][d.language_code] = d;
+        });
+
         // Check available ready languages
         const versions = await CourseVersion.findAll({
             where: { course_id: course.id, status: 'READY' }
@@ -673,11 +1032,11 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
         if (readyLangMap['hi'] || allSubtitles.some(s => s.language_code === 'hi')) {
             availableLanguages.push({ code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', ready: true });
         }
-        if (readyLangMap['ta'] || allSubtitles.some(s => s.language_code === 'ta')) {
+        if (readyLangMap['ta'] || allSubtitles.some(s => s.language_code === 'ta') || allDubbed.some(d => d.language_code === 'ta')) {
             availableLanguages.push({ code: 'ta', name: 'Tamil', nativeName: 'தமிழ்', ready: true });
         }
 
-        const isRequestedReady = requestedLang !== 'en' && (readyLangMap[requestedLang] || allSubtitles.some(s => s.language_code === requestedLang));
+        const isRequestedReady = requestedLang !== 'en' && (readyLangMap[requestedLang] || allSubtitles.some(s => s.language_code === requestedLang) || allDubbed.some(d => d.language_code === requestedLang));
         let translationMap = {};
         let activeTitle = course.title;
         let activeDescription = course.description;
@@ -695,6 +1054,64 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
                 translationMap[t.content_item_id] = t;
             });
         }
+
+        // Fetch all Quizzes for items in this course
+        const allQuizzes = await Quiz.findAll({
+            where: { content_item_id: itemIds },
+            include: [{
+                model: QuizQuestion,
+                as: 'questions',
+                include: [
+                    { model: QuizOption, as: 'options' },
+                    { model: QuizQuestionTranslation, as: 'translations' }
+                ]
+            }]
+        });
+
+        const quizMap = {};
+        let optionTransMap = {};
+        if (requestedLang !== 'en' && allQuizzes.length > 0) {
+            const allOptIds = [];
+            allQuizzes.forEach(qz => qz.questions?.forEach(q => q.options?.forEach(opt => allOptIds.push(opt.id))));
+            if (allOptIds.length > 0) {
+                const optTranslations = await QuizOptionTranslation.findAll({
+                    where: { option_id: allOptIds, language_code: requestedLang }
+                });
+                optTranslations.forEach(ot => {
+                    optionTransMap[ot.option_id] = ot.translated_text;
+                });
+            }
+        }
+
+        allQuizzes.forEach(qz => {
+            const structuredQuestions = (qz.questions || []).sort((a, b) => a.order_index - b.order_index).map(q => {
+                const qTrans = (q.translations || []).find(t => t.language_code === requestedLang);
+                const sortedOptions = (q.options || []).sort((a, b) => a.option_index - b.option_index).map(opt => ({
+                    id: opt.id,
+                    option_index: opt.option_index,
+                    option_text: opt.option_text,
+                    translated_option_text: optionTransMap[opt.id] || null
+                }));
+                return {
+                    id: q.id,
+                    order_index: q.order_index,
+                    question_text: q.question_text,
+                    translated_question_text: qTrans ? qTrans.translated_text : null,
+                    options: sortedOptions
+                };
+            });
+
+            quizMap[qz.content_item_id] = {
+                id: qz.id,
+                title: qz.title,
+                description: qz.description,
+                quiz_type: qz.quiz_type,
+                duration_minutes: qz.duration_minutes,
+                is_mandatory: qz.is_mandatory,
+                total_questions: structuredQuestions.length,
+                questions: structuredQuestions
+            };
+        });
 
         // Format for frontend
         const responseData = {
@@ -734,7 +1151,6 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
                         activeTranscriptUrl = itemSubs[requestedLang].transcript_path;
                     }
 
-
                     const availableTracks = [];
                     if (itemSubs['hi']) {
                         availableTracks.push({
@@ -753,6 +1169,16 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
                         });
                     }
 
+                    // Attach Dubbed Video metadata (e.g. Tamil dubbed video)
+                    const itemDubbed = dubbedMap[i.id] || {};
+                    let activeDubbedVideoUrl = null;
+                    let activeVoiceAudioUrl = null;
+
+                    if (requestedLang !== 'en' && itemDubbed[requestedLang]) {
+                        activeDubbedVideoUrl = itemDubbed[requestedLang].dubbed_video_path;
+                        activeVoiceAudioUrl = itemDubbed[requestedLang].voice_audio_path;
+                    }
+
                     return {
                         id: i.id,
                         title: lessonTitle,
@@ -765,7 +1191,11 @@ router.get('/:course_id/player', authMiddleware, async (req, res) => {
                         is_translated: isTranslated,
                         subtitle_url: activeSubtitleUrl,
                         transcript_url: activeTranscriptUrl,
-                        subtitles: availableTracks
+                        subtitles: availableTracks,
+                        dubbed_video_url: activeDubbedVideoUrl,
+                        voice_audio_url: activeVoiceAudioUrl,
+                        dubbed_assets: itemDubbed,
+                        quiz_data: quizMap[i.id] || null
                     };
                 }) : []
             })) : []
@@ -959,97 +1389,6 @@ router.post('/', authMiddleware, async (req, res) => {
             instructor_id: req.user.id 
         });
         res.json(new_course);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ detail: "Internal Server Error" });
-    }
-});
-
-router.get('/:course_id/player', authMiddleware, async (req, res) => {
-    try {
-        const lang = req.query.lang || 'en';
-        const course = await Course.findOne({ 
-            where: { id: req.params.course_id },
-            include: [
-                {
-                    model: Module,
-                    include: [
-                        { 
-                            model: ContentItem, 
-                            as: 'items',
-                            include: [
-                                { model: ContentItemTranslation, as: 'translations' }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    model: CourseVersion,
-                    as: 'versions'
-                }
-            ]
-        });
-        if (!course) return res.status(404).json({ detail: "Course not found" });
-
-        // Available languages
-        const availableLanguages = [
-            { language_code: 'en', name: 'English (Original)', status: 'READY' }
-        ];
-        if (course.versions) {
-            course.versions.forEach(v => {
-                availableLanguages.push({
-                    language_code: v.language_code,
-                    name: v.language_code === 'hi' ? 'हिन्दी (Hindi)' : v.language_code,
-                    status: v.status,
-                    progress: v.progress
-                });
-            });
-        }
-
-        // Format for frontend
-        const responseData = {
-            id: course.id,
-            title: course.title,
-            description: course.description,
-            price: course.price,
-            image_url: course.image_url,
-            is_published: course.is_published,
-            is_finalized: course.is_finalized,
-            current_lang: lang,
-            available_languages: availableLanguages,
-            modules: course.Modules ? course.Modules.map(m => ({
-                id: m.id,
-                title: m.title,
-                order: m.order,
-                lessons: m.items ? m.items.map(i => {
-                    const isBase64 = typeof i.content === 'string' && i.content.startsWith('data:');
-                    let lessonContent = isBase64 ? `/api/v1/content/media/${i.id}` : i.content;
-                    let lessonTitle = i.title;
-                    let lessonInstructions = i.instructions;
-
-                    if (lang !== 'en' && i.translations && i.translations.length > 0) {
-                        const targetTrans = i.translations.find(t => t.language_code === lang);
-                        if (targetTrans) {
-                            if (targetTrans.title) lessonTitle = targetTrans.title;
-                            if (targetTrans.content) lessonContent = targetTrans.content;
-                            if (targetTrans.instructions) lessonInstructions = targetTrans.instructions;
-                        }
-                    }
-
-                    return {
-                        id: i.id,
-                        title: lessonTitle,
-                        type: i.type,
-                        content: lessonContent,
-                        duration: i.duration,
-                        is_mandatory: i.is_mandatory,
-                        order: i.order,
-                        instructions: lessonInstructions
-                    };
-                }) : []
-            })) : []
-        };
-        res.json(responseData);
     } catch (error) {
         console.error(error);
         res.status(500).json({ detail: "Internal Server Error" });
